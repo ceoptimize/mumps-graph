@@ -1,0 +1,64 @@
+/Vista-M-source-code/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Environments
+.env
+.env.*
+.venv/
+venv/
+env/
+
+# Editors/IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+.history/
+
+# Logs
+*.log
+logs/
+
+# Node (just in case)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Archives/Binaries
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Claude / Cursor local artifacts (keep templates/commands tracked)
+.cursor/
+.cursorignore
+.claude/**/settings.local.json
+.claude/**/cache/
+
