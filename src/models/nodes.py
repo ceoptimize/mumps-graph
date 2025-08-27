@@ -1,0 +1,137 @@
+"""Pydantic models for graph nodes."""
+
+from typing import Any, Dict, List, Optional
+from uuid import uuid4
+
+from pydantic import BaseModel, Field
+
+
+class PackageNode(BaseModel):
+    """Package organizational unit from Packages.csv."""
+
+    package_id: str = Field(default_factory=lambda: str(uuid4()))
+    name: str
+    directory: str
+    prefixes: List[str] = Field(default_factory=list)
+    vdl_id: Optional[str] = None
+    files_low: Optional[str] = None
+    files_high: Optional[str] = None
+
+    def dict_for_neo4j(self) -> Dict[str, Any]:
+        """Convert to dict for Neo4j node creation."""
+        return {
+            "package_id": self.package_id,
+            "name": self.name,
+            "directory": self.directory,
+            "prefixes": self.prefixes,
+            "vdl_id": self.vdl_id,
+            "files_low": self.files_low,
+            "files_high": self.files_high,
+        }
+
+
+class FileNode(BaseModel):
+    """File/Table definition from DD."""
+
+    file_id: str = Field(default_factory=lambda: str(uuid4()))
+    number: str  # e.g., "2" for PATIENT file
+    name: str  # e.g., "PATIENT"
+    global_root: Optional[str] = None  # e.g., "^DPT"
+    parent_file: Optional[str] = None  # For subfiles
+    is_subfile: bool = False
+    description: Optional[str] = None
+    last_modified: Optional[str] = None
+    version: Optional[str] = None
+
+    def dict_for_neo4j(self) -> Dict[str, Any]:
+        """Convert to dict for Neo4j node creation."""
+        return {
+            "file_id": self.file_id,
+            "number": self.number,
+            "name": self.name,
+            "global_root": self.global_root,
+            "parent_file": self.parent_file,
+            "is_subfile": self.is_subfile,
+            "description": self.description,
+            "last_modified": self.last_modified,
+            "version": self.version,
+        }
+
+
+class FieldNode(BaseModel):
+    """Field definition within a file."""
+
+    field_id: str = Field(default_factory=lambda: str(uuid4()))
+    number: str  # e.g., ".01"
+    name: str  # e.g., "NAME"
+    file_number: str  # Parent file number
+    data_type: str  # F, N, D, P, S, C, W, V
+    required: bool = False
+    is_pointer: bool = False
+    is_computed: bool = False
+    is_multiple: bool = False
+    target_file: Optional[str] = None  # For pointer fields
+    mumps_code: Optional[str] = None  # For computed fields
+    description: Optional[str] = None
+    help_text: Optional[str] = None
+
+    def dict_for_neo4j(self) -> Dict[str, Any]:
+        """Convert to dict for Neo4j node creation."""
+        return {
+            "field_id": self.field_id,
+            "number": self.number,
+            "name": self.name,
+            "file_number": self.file_number,
+            "data_type": self.data_type,
+            "required": self.required,
+            "is_pointer": self.is_pointer,
+            "is_computed": self.is_computed,
+            "is_multiple": self.is_multiple,
+            "target_file": self.target_file,
+            "mumps_code": self.mumps_code,
+            "description": self.description,
+            "help_text": self.help_text,
+        }
+
+
+class ParsedGlobal(BaseModel):
+    """Parsed global line from ZWR file."""
+
+    global_name: str
+    subscripts: List[str]
+    value: str
+    raw_line: str
+
+    def is_dd_entry(self) -> bool:
+        """Check if this is a DD (Data Dictionary) entry."""
+        return self.global_name == "DD"
+
+    def is_file_header(self) -> bool:
+        """Check if this is a file header entry (^DD(file_num,0))."""
+        return (
+            self.is_dd_entry()
+            and len(self.subscripts) == 2
+            and self.subscripts[1] == "0"
+        )
+
+    def is_field_definition(self) -> bool:
+        """Check if this is a field definition entry."""
+        return (
+            self.is_dd_entry()
+            and len(self.subscripts) >= 3
+            and self.subscripts[2] == "0"
+        )
+
+
+DATA_TYPE_MAP = {
+    "F": "Free Text",
+    "N": "Numeric",
+    "D": "Date/Time",
+    "P": "Pointer",
+    "S": "Set of Codes",
+    "C": "Computed",
+    "W": "Word Processing",
+    "V": "Variable Pointer",
+    "K": "MUMPS",
+    "M": "Multiple",
+}

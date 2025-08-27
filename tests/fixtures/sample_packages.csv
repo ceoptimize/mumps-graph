@@ -1,0 +1,46 @@
+Directory Name,Package Name,Prefixes,VDL ID,File Numbers Low,File Numbers High
+Accounts Receivable,Accounts Receivable,PRC PRCA,36,430,430.9
+Adverse Reaction Tracking,Adverse Reaction Tracking,GMRA,120,120,120.9
+Automated Information Collection System,AICS,AQAO,129,155,155.99
+Bar Code Medication Administration,BCMA,PSB,197,53.7,53.799
+Beneficiary Travel,Beneficiary Travel,DGBT,181,392,392.99
+Clinical Case Registries,CCR,ROR,195,798,799.9
+Clinical Monitoring System,CMS,QAC,162,738,738.99
+Clinical Procedures,Clinical Procedures,MD,164,702,704.999
+Clinical Reminders,Clinical Reminders,PXRM,127,800,813.7
+,,PX,,,
+Drug Accountability,Drug Accountability,PSA,73,58,58.99
+E Claims Management Engine,ECME,BPS,174,9002313.01,9002313.99
+Electronic Wait List,EWL,SD,133,409.3,409.49
+Emergency Department Integration Software,EDIS,EDP,173,230,230.99
+,,EDPC EDPB,,,
+Fee Basis,Fee Basis,FB,161,161,161.99
+General Medical Record,GMR,GMR GMRY GMRV,140,120,126.99
+Health Data & Informatics,HDI,HDI,158,7115,7115.999
+Health Level Seven,HL7,HL,126,869.2,875
+Health Summary,Health Summary,GMTS,142,142,142.99
+Incident Reporting,Incident Reporting,QAN,163,742,742.999
+Integrated Billing,Integrated Billing,IB,52,350,366
+,,IBE,,,
+Kernel,Kernel,XU XQ ZI ZT ZU,10,3.2,19.9
+,,XG XL XM XPD XT XW,,,
+,,DI XW ZIS ZTM,,,
+Lexicon Utility,Lexicon,LEX,118,757,757.999
+Mental Health,Mental Health,YS YT,177,601,627.99
+National Drug File,NDF,PSN,109,50.6,50.621
+Order Entry Results Reporting,OE/RR,OR,141,100,102
+Outpatient Pharmacy,Outpatient Pharmacy,PSO PSX PSS,59,52,52.91
+Patient Care Encounter,PCE,PX,150,9000010,9000010.99
+,,AUTN AUPN VST,,,
+Patient Data Exchange,PDX,VAQ,124,393,394.9
+Pharmacy Data Management,PDM,PSS,198,50.7,59.73
+,,PSG PSO,,,
+Problem List,Problem List,GMPL,125,9000011,9000011.99
+Radiology Nuclear Medicine,Radiology,RA,84,70,79.9
+Registration,Registration,DG,5,2,45.99
+Scheduling,Scheduling,SC SD,10,44,44.5
+Surgery,Surgery,SR,137,130,136.99
+Text Integration Utility,TIU,TIU,160,8925,8928
+VA FileMan,VA FileMan,DI DIA DD DM,5,0.2,1.99999
+VBECS,VBECS,VBEC,176,6002,6010
+VistALink,VistALink Security,XOBS,114,18.02,18.13
