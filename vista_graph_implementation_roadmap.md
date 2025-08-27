@@ -212,7 +212,7 @@ This document provides a practical implementation roadmap for building a graph d
 **Goal**: Build core schema infrastructure
 
 #### Tasks:
-1. **Set up graph database** (Neo4j recommended)
+1. **Set up graph database** (Neo4j, community edition, apoc enabled)
    - Install and configure
    - Create indexes on key properties (file.number, routine.name, label.name)
    - Set up multi-label support
