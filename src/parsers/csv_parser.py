@@ -15,6 +15,7 @@ class PackageCSVParser:
         self.packages: List[PackageNode] = []
         self.prefix_to_package: Dict[str, str] = {}
         self.file_range_to_package: Dict[tuple, str] = {}
+        self.file_to_package: Dict[str, str] = {}  # Direct file number to package mapping
 
     def parse_file(self, file_path: Path) -> List[PackageNode]:
         """
@@ -39,6 +40,11 @@ class PackageCSVParser:
                         # Add additional prefixes from continuation row
                         additional_prefixes = self._extract_prefixes(row)
                         current_package.prefixes.extend(additional_prefixes)
+                        # Add file numbers from continuation row
+                        file_num = row.get("File Numbers", "").strip()
+                        if file_num:
+                            current_package.file_numbers.append(file_num)
+                            self.file_to_package[file_num] = current_package.name
                     continue
 
                 # Process new package
@@ -51,7 +57,11 @@ class PackageCSVParser:
                     for prefix in package.prefixes:
                         self.prefix_to_package[prefix] = package.name
 
-                    # Map file range to package
+                    # Map file numbers to package
+                    for file_num in package.file_numbers:
+                        self.file_to_package[file_num] = package.name
+
+                    # Map file range to package (if applicable)
                     if package.files_low and package.files_high:
                         try:
                             low = float(package.files_low)
@@ -73,10 +83,11 @@ class PackageCSVParser:
         Returns:
             True if continuation row
         """
-        # Continuation rows typically have empty Directory Name but have prefixes
+        # Continuation rows have empty Package Name and Directory Name
+        # but may have prefixes or file numbers
         return (
-            not row.get("Directory Name", "").strip()
-            and row.get("Prefixes", "").strip()
+            not row.get("Package Name", "").strip()
+            and not row.get("Directory Name", "").strip()
         )
 
     def _process_package_row(self, row: Dict[str, str]) -> Optional[PackageNode]:
@@ -100,7 +111,13 @@ class PackageCSVParser:
         prefixes = self._extract_prefixes(row)
         vdl_id = row.get("VDL ID", "").strip() or None
 
-        # Extract file range
+        # Extract file numbers
+        file_numbers = []
+        file_num = row.get("File Numbers", "").strip()
+        if file_num:
+            file_numbers.append(file_num)
+
+        # Extract file range (legacy support)
         files_low = row.get("File Numbers Low", "").strip() or None
         files_high = row.get("File Numbers High", "").strip() or None
 
@@ -111,6 +128,7 @@ class PackageCSVParser:
             vdl_id=vdl_id,
             files_low=files_low,
             files_high=files_high,
+            file_numbers=file_numbers,
         )
 
     def _extract_prefixes(self, row: Dict[str, str]) -> List[str]:
@@ -171,6 +189,11 @@ class PackageCSVParser:
         Returns:
             Package name or None
         """
+        # First check direct mapping
+        if file_number in self.file_to_package:
+            return self.file_to_package[file_number]
+        
+        # Then check ranges (if any)
         try:
             file_num = float(file_number)
         except (ValueError, TypeError):

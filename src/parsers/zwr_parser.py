@@ -17,6 +17,7 @@ class ZWRParser:
         """Initialize the ZWR parser."""
         self.files: Dict[str, FileNode] = {}
         self.fields: List[FieldNode] = []
+        self.file_names: Dict[str, str] = {}  # Maps file number to actual name
         self.current_line_number = 0
 
     def parse_line(self, line: str) -> Optional[ParsedGlobal]:
@@ -129,6 +130,23 @@ class ZWRParser:
         files = {}
         fields = []
 
+        # First pass: collect file names from NM entries
+        for line_num, line in enumerate(lines, 1):
+            self.current_line_number = line_num
+            parsed = self.parse_line(line)
+
+            if not parsed or not parsed.is_dd_entry():
+                continue
+
+            # Look for file name entries: ^DD(file_num,0,"NM","NAME")=""
+            if (len(parsed.subscripts) >= 4 and 
+                parsed.subscripts[1] == "0" and 
+                parsed.subscripts[2] == "NM"):
+                file_number = parsed.subscripts[0]
+                file_name = parsed.subscripts[3]
+                self.file_names[file_number] = file_name
+
+        # Second pass: process files and fields
         for line_num, line in enumerate(lines, 1):
             self.current_line_number = line_num
             parsed = self.parse_line(line)
@@ -148,6 +166,10 @@ class ZWRParser:
                 if field_node:
                     fields.append(field_node)
 
+        # Update internal state for statistics
+        self.files = files
+        self.fields = fields
+        
         return files, fields
 
     def _process_file_header(self, parsed: ParsedGlobal) -> Optional[FileNode]:
@@ -158,12 +180,17 @@ class ZWRParser:
         if not parts:
             return None
 
-        file_name = parts[0] if parts[0] else f"FILE_{file_number}"
+        # Use the actual name from NM entries if available, otherwise use header name
+        if file_number in self.file_names:
+            file_name = self.file_names[file_number]
+        elif parts[0] and parts[0] not in ["FIELD", "SUB-FIELD"]:
+            # Use the name from header if it's not a generic term
+            file_name = parts[0]
+        else:
+            file_name = f"FILE_{file_number}"
 
-        # Extract global root if present
+        # Global root will be extracted from DIC entries later
         global_root = None
-        if len(parts) > 1 and parts[1]:
-            global_root = f"^{parts[1]}" if not parts[1].startswith("^") else parts[1]
 
         # Check if this is a subfile
         is_subfile = "SUB-FILE" in parsed.value.upper() or float(file_number) % 1 != 0
@@ -251,6 +278,34 @@ class ZWRParser:
             lines = f.readlines()
 
         return self.extract_file_definitions(lines)
+    
+    def parse_dic_file(self, file_path: Path, files: Dict[str, FileNode]):
+        """
+        Parse DIC file to extract global roots.
+        
+        Args:
+            file_path: Path to FILE.zwr (DIC entries)
+            files: Dictionary of FileNode objects to update
+        """
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                parsed = self.parse_line(line)
+                if not parsed:
+                    continue
+                    
+                # Look for DIC global root entries: ^DIC(file_num,0,"GL")="^GLOBAL("
+                if (parsed.global_name == "DIC" and 
+                    len(parsed.subscripts) == 3 and 
+                    parsed.subscripts[1] == "0" and 
+                    parsed.subscripts[2] == "GL"):
+                    
+                    file_number = parsed.subscripts[0]
+                    if file_number in files:
+                        # Clean up the global root value
+                        global_root = parsed.value
+                        if not global_root.startswith("^"):
+                            global_root = "^" + global_root
+                        files[file_number].global_root = global_root
 
     def stream_parse_file(
         self, file_path: Path

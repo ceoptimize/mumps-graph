@@ -4,6 +4,7 @@ import argparse
 import logging
 import sys
 import time
+from pathlib import Path
 
 from dotenv import load_dotenv
 from rich.console import Console
@@ -185,6 +186,15 @@ def phase1_pipeline(args):
         f"[green]✅ Parsed {zwr_stats['total_files']} files and "
         f"{zwr_stats['total_fields']} fields in {parse_time:.2f}s[/green]"
     )
+
+    # Parse FILE.zwr for global roots
+    console.print("[cyan]Parsing FILE.zwr for global roots...[/cyan]")
+    file_zwr_path = settings.vista_source_dir / "Packages/VA FileMan/Globals/1+FILE.zwr"
+    if file_zwr_path.exists():
+        zwr_parser.parse_dic_file(file_zwr_path, files)
+        console.print("[green]✅ Updated global roots from FILE.zwr[/green]")
+    else:
+        console.print("[yellow]⚠️  FILE.zwr not found, global roots may be incomplete[/yellow]")
 
     # Build graph
     console.print("\n[cyan]Building graph database...[/cyan]")

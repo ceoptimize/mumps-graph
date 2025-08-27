@@ -17,8 +17,8 @@ Implement Phase 1 of the VistA Graph Database roadmap, creating the core schema 
 Build the foundational graph database infrastructure for VistA-M codebase analysis by:
 - Setting up Neo4j Community Edition with Docker
 - Creating a robust ZWR parser for DD.zwr format
-- Parsing Packages.csv for package-to-prefix mapping
-- Creating foundational nodes (Package, File, Field) and relationships
+- Parsing Packages.csv for package-to-prefix mapping and file ownership
+- Creating foundational nodes (Package, File, Field) and relationships (CONTAINS_FIELD, OWNS_FILE, POINTS_TO)
 
 ## Why
 - **Business value**: Enable impact analysis and dependency tracking in VistA-M
@@ -30,13 +30,16 @@ Build the foundational graph database infrastructure for VistA-M codebase analys
 A working Neo4j database populated with:
 - All Package nodes from Packages.csv
 - File and Field nodes from DD.zwr
-- Basic CONTAINS_FIELD relationships
+- Basic CONTAINS_FIELD relationships between Files and Fields
+- OWNS_FILE relationships between Packages and their Files
+- POINTS_TO relationships between pointer Fields and target Files
 - Confidence scoring on all relationships
 
 ### Success Criteria
 - [ ] Neo4j database running with Docker
 - [ ] ZWR parser successfully parses 100% of DD.zwr
-- [ ] All packages mapped from Packages.csv
+- [ ] All packages mapped from Packages.csv with file ownership
+- [ ] Package-to-File OWNS_FILE relationships created from file number ranges
 - [ ] Cypher queries return correct file/field structures
 - [ ] Unit tests pass with 80%+ coverage
 - [ ] Performance: Parse and load complete DD in <30 seconds

@@ -16,6 +16,7 @@ class PackageNode(BaseModel):
     vdl_id: Optional[str] = None
     files_low: Optional[str] = None
     files_high: Optional[str] = None
+    file_numbers: List[str] = Field(default_factory=list)  # Individual file numbers
 
     def dict_for_neo4j(self) -> Dict[str, Any]:
         """Convert to dict for Neo4j node creation."""
@@ -27,6 +28,7 @@ class PackageNode(BaseModel):
             "vdl_id": self.vdl_id,
             "files_low": self.files_low,
             "files_high": self.files_high,
+            "file_numbers": self.file_numbers,
         }
 
 
