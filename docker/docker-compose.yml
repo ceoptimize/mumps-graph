@@ -6,13 +6,13 @@ services:
     container_name: vista-graph-neo4j-emcellent
     restart: unless-stopped
     ports:
-      - "7475:7474"  # HTTP/Browser
-      - "7688:7687"  # Bolt protocol
+      - "7475:7474" # HTTP/Browser
+      - "7688:7687" # Bolt protocol
     volumes:
-      - neo4j_data:/data
-      - neo4j_logs:/logs
-      - neo4j_import:/var/lib/neo4j/import
-      - neo4j_plugins:/plugins
+      - vista_emcellent_neo4j_data:/data
+      - vista_emcellent_neo4j_logs:/logs
+      - vista_emcellent_neo4j_import:/var/lib/neo4j/import
+      - vista_emcellent_neo4j_plugins:/plugins
     environment:
       # Initial password for neo4j user
       NEO4J_AUTH: neo4j/password
@@ -30,18 +30,18 @@ services:
       NEO4J_dbms_security_procedures_unrestricted: "apoc.*"
       NEO4J_dbms_security_procedures_allowlist: "apoc.*"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
+      test: [ "CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1" ]
       interval: 10s
       timeout: 10s
       retries: 5
       start_period: 30s
 
 volumes:
-  neo4j_data:
+  vista_emcellent_neo4j_data:
     driver: local
-  neo4j_logs:
+  vista_emcellent_neo4j_logs:
     driver: local
-  neo4j_import:
+  vista_emcellent_neo4j_import:
     driver: local
-  neo4j_plugins:
+  vista_emcellent_neo4j_plugins:
     driver: local
