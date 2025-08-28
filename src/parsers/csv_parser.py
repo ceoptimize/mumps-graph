@@ -192,7 +192,7 @@ class PackageCSVParser:
         # First check direct mapping
         if file_number in self.file_to_package:
             return self.file_to_package[file_number]
-        
+
         # Then check ranges (if any)
         try:
             file_num = float(file_number)
