@@ -230,26 +230,43 @@ class ZWRParser:
         if len(parts) > 1:
             type_info = parts[1]
             if type_info:
-                # First character is usually the type
-                data_type = type_info[0].upper()
-
-                # Check for special types
-                if data_type == "P":
+                # Handle complex pointer types (*P format)
+                if type_info.startswith("*P") or "P" in type_info[:3]:
                     is_pointer = True
+                    data_type = "P"
                     # Extract target file from pointer definition
-                    if len(type_info) > 1:
-                        target_match = re.search(r"P(\d+)", type_info)
-                        if target_match:
-                            target_file = target_match.group(1)
-                elif data_type == "C":
+                    target_match = re.search(r"P(\d+)", type_info)
+                    if target_match:
+                        target_file = target_match.group(1)
+                # Handle required fields with type info (RF, RN, RD, etc.)
+                elif type_info.startswith("R") and len(type_info) > 1:
+                    # R followed by actual type (F, N, D, etc.)
+                    if len(type_info) > 1 and type_info[1] in "FNDSPWVCMK":
+                        data_type = type_info[1].upper()
+                    else:
+                        data_type = "R"  # Just required, no specific type
+                # Handle computed fields
+                elif type_info.startswith("C"):
                     is_computed = True
+                    data_type = "C"
+                # Handle multiple fields
                 elif type_info.startswith("M"):
                     is_multiple = True
                     data_type = "M"
+                # Standard types
+                else:
+                    # First character is usually the type
+                    first_char = type_info[0].upper()
+                    if first_char in "FNDSPWVCMK":
+                        data_type = first_char
 
-        # Check if field is required (usually in parts[2])
+        # Check if field is required (R prefix in type info or R in parts[2])
         required = False
-        if len(parts) > 2 and parts[2]:
+        if len(parts) > 1 and parts[1]:
+            # Required if type starts with R (RF, RN, RD, etc.)
+            required = parts[1].startswith("R")
+        # Also check parts[2] for additional required flag
+        if not required and len(parts) > 2 and parts[2]:
             required = "R" in parts[2].upper()
 
         return FieldNode(
