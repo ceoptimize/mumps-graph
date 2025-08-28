@@ -30,10 +30,8 @@ According to `vista_graph_implementation_roadmap.md` (Week 5-6):
 
 ## Implementation Approach
 
-### Git Worktree Strategy
-As specified in feature_3.md, create two parallel implementations:
-1. **Branch 1**: emcellent-based parser (Node.js subprocess)
-2. **Branch 2**: Custom Python parser (regex/pattern-based)
+### Emcellent Parser Strategy
+Use the emcellent MUMPS parser to parse routine files and extract structure. Emcellent provides robust MUMPS parsing with proper AST generation, eliminating the need for custom regex-based parsing.
 
 ### Node Schema Extensions
 
@@ -89,84 +87,60 @@ CHECK() Q 1  ; Returns literal
 
 ## Technical Implementation Details
 
-### Option 1: emcellent Parser Integration
+### Emcellent MUMPS Parser Integration
 
-**Setup:**
-```bash
-# In worktree branch
-cd parser_implementations/emcellent_parser
-npm install emcellent
-```
-
-**Python Integration:**
+**Using Emcellent for MUMPS Parsing:**
 ```python
-import subprocess
-import json
-
-class EmcellentParser:
-    def parse_routine(self, file_path: str) -> Dict:
-        with open(file_path, 'r') as f:
-            content = f.read()
-        
-        # Call emcellent via Node.js
-        result = subprocess.run(
-            ['node', 'parse_mumps.js', content],
-            capture_output=True,
-            text=True
-        )
-        
-        return json.loads(result.stdout)
-```
-
-**Node.js Bridge (parse_mumps.js):**
-```javascript
-const emcellent = require('emcellent');
-const input = process.argv[2];
-const parsed = emcellent.parse(input);
-console.log(JSON.stringify(parsed));
-```
-
-### Option 2: Custom Python Parser
-
-**Pattern-Based Parser:**
-```python
-import re
+from pathlib import Path
 from typing import List, Dict, Optional
+from emcellent import parse_mumps_file, MumpsAST
 
 class MUMPSParser:
-    # Regex patterns
-    LABEL_PATTERN = r'^([A-Z][A-Z0-9]*)\s*(\([^)]*\))?\s*(;.*)?$'
-    FUNCTION_PATTERN = r'Q\s+\$\$|QUIT\s+\$\$'
     ENTRY_POINT_INDICATORS = ['EN', 'EP', 'START', 'INIT']
     
     def parse_routine(self, file_path: str) -> Dict:
+        """Parse a MUMPS routine file using emcellent."""
         labels = []
+        
+        # Parse file with emcellent
         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-            lines = f.readlines()
+            content = f.read()
         
-        for line_num, line in enumerate(lines, 1):
-            # Skip header lines
-            if line_num == 1 and ';;' in line:
-                continue
-                
-            # Check for label at start of line
-            if line and not line[0].isspace():
-                match = re.match(self.LABEL_PATTERN, line)
-                if match:
-                    label_name = match.group(1)
-                    params = match.group(2) or ''
-                    comment = match.group(3) or ''
-                    
-                    labels.append({
-                        'name': label_name,
-                        'line_number': line_num,
-                        'parameters': self.extract_params(params),
-                        'is_function': self.is_function(lines, line_num),
-                        'is_entry_point': self.is_entry_point(label_name),
-                        'comment': comment.strip(';').strip()
-                    })
+        # Get AST from emcellent
+        ast = parse_mumps_file(content)
         
-        return {'labels': labels}
+        # Extract labels from AST
+        for node in ast.walk():
+            if node.type == 'label':
+                label_data = {
+                    'name': node.name,
+                    'line_number': node.line,
+                    'parameters': self.extract_params(node),
+                    'is_function': self.is_function(node),
+                    'is_entry_point': self.is_entry_point(node.name),
+                    'comment': node.comment if hasattr(node, 'comment') else ''
+                }
+                labels.append(label_data)
+        
+        return {'labels': labels, 'ast': ast}
+    
+    def extract_params(self, node) -> List[str]:
+        """Extract parameters from a label node."""
+        if hasattr(node, 'parameters'):
+            return node.parameters
+        return []
+    
+    def is_function(self, node) -> bool:
+        """Determine if a label is a function (returns a value)."""
+        # Check if the label has a QUIT with value in its body
+        for child in node.children:
+            if child.type == 'quit' and child.has_value:
+                return True
+        return False
+    
+    def is_entry_point(self, label_name: str) -> bool:
+        """Determine if a label is likely an entry point."""
+        return any(label_name.startswith(prefix) for prefix in self.ENTRY_POINT_INDICATORS)
 ```
 
 ## Project Management
@@ -174,32 +148,25 @@ class MUMPSParser:
 **Use Archon MCP Server**: This implementation should be managed using Archon for project and task tracking. Create a project in Archon and break down the implementation into atomic tasks that can be tracked and managed systematically.
 
 ## Implementation Tasks
-   ```bash
-   git worktree add ../VistA-M-emcellent feature/phase3-emcellent
-   git worktree add ../VistA-M-custom feature/phase3-custom
-   ```
 
-2. **Implement emcellent Parser**
-   - Install Node.js dependencies
-   - Create Python-Node.js bridge
-   - Parse sample routines
-   - Extract labels and metadata
+### Phase 3A: Parser Integration
 
-3. **Implement Custom Parser**
-   - Create regex patterns for MUMPS syntax
-   - Handle label detection
-   - Identify functions vs subroutines
-   - Extract parameters
+1. **Integrate Emcellent Parser**
+   - Install and configure emcellent parser
+   - Create wrapper for emcellent AST traversal
+   - Extract labels, functions, and entry points from AST
+   - Handle parameters and comments
+   - Handle edge cases and malformed routines
 
-4. **Compare Parsers**
-   - Parse 100 sample routines with both
-   - Compare accuracy (manually validate 10 routines)
-   - Measure performance
-   - Assess maintainability
+2. **Validate Parser**
+   - Parse sample routines from Registration package
+   - Validate AST accuracy on 10 representative routines
+   - Measure performance metrics
+   - Document AST node patterns found
 
 ### Phase 3B: Graph Integration
 
-5. **Extend Node Models**
+3. **Extend Node Models**
    ```python
    # src/models/nodes.py
    class RoutineNode(BaseModel):
@@ -209,15 +176,18 @@ class MUMPSParser:
        # Implementation
    ```
 
-6. **Create Routine Parser Module**
+4. **Create Routine Parser Module**
    ```python
    # src/parsers/routine_parser.py
+   from emcellent import parse_mumps_file
+   
    class RoutineParser:
        def parse_directory(self, dir_path: Path) -> List[RoutineNode]
-       def extract_labels(self, routine: RoutineNode) -> List[LabelNode]
+       def extract_labels_from_ast(self, ast, routine: RoutineNode) -> List[LabelNode]
+       def process_routine_file(self, file_path: Path) -> Tuple[RoutineNode, List[LabelNode]]
    ```
 
-7. **Extend Graph Builder**
+5. **Extend Graph Builder**
    ```python
    # src/graph/builder.py
    def create_routine_nodes(self, routines: List[RoutineNode])
@@ -226,7 +196,7 @@ class MUMPSParser:
    def create_package_routine_relationships()
    ```
 
-8. **Update Main Pipeline**
+6. **Update Main Pipeline**
    ```python
    # src/main.py
    def phase3_pipeline(args):
@@ -433,7 +403,7 @@ uv run pytest --cov=src --cov-report=html
 
 ## Success Metrics
 
-### Parser Comparison Metrics
+### Parser Performance Metrics
 - **Accuracy**: 95%+ labels correctly identified
 - **Performance**: < 30 seconds for 1000 routines
 - **Robustness**: Handle malformed MUMPS gracefully
@@ -469,25 +439,23 @@ except ParseError as e:
 
 ## Decision Documentation
 
-### Parser Choice Rationale
-After implementing both approaches, choose based on:
-
-| Criteria | emcellent | Custom | Winner |
-|----------|-----------|---------|---------|
-| Accuracy | Full AST | Pattern matching | TBD |
-| Speed | Node.js overhead | Pure Python | TBD |
-| Maintainability | External dep | Internal control | TBD |
-| Extensibility | Limited to emcellent | Full control | TBD |
+### Parser Implementation Rationale
+The Emcellent parser approach provides:
+- Robust, tested MUMPS parsing capabilities
+- Proper AST generation for structured code analysis
+- Handles MUMPS syntax edge cases correctly
+- Eliminates need for maintaining custom regex patterns
+- More accurate parsing of complex MUMPS constructs
+- Better handling of malformed or non-standard code
 
 ### Implementation Notes
 - Start with Registration package (smaller subset)
 - Validate against known routine structures
-- Consider hybrid approach if beneficial
+- Iterate based on patterns discovered
 
 ## Resources
 
 ### Documentation
-- **emcellent**: https://github.com/mmccall/eMcellent
 - **MUMPS Syntax**: https://mumps.dev/
 - **VistaM Repository**: Vista-M-source-code
 
@@ -499,32 +467,33 @@ Reference implementations in:
 ## Risk Mitigation
 
 ### Technical Risks
-1. **MUMPS Syntax Complexity**: Use conservative patterns, mark uncertain extractions
+1. **MUMPS Syntax Complexity**: Rely on emcellent's proven parsing, mark uncertain extractions
 2. **Scale Issues**: Process in batches, use multiprocessing
-3. **Parser Dependencies**: Vendor both parsers, document setup
+3. **Parser Dependencies**: Ensure emcellent is properly installed and configured
 
 ### Data Quality
 1. **Malformed Routines**: Log and continue, don't fail pipeline
 2. **Missing Metadata**: Use defaults, mark for review
 3. **Inconsistent Patterns**: Document variations found
 
-## Confidence Score: 8.5/10
+## Confidence Score: 9/10
 
 ### Strengths
 - Clear requirements from roadmap
 - Existing pattern to follow (Phase 1-2)
 - Well-defined node/relationship schema
-- Two implementation approaches for comparison
+- Leveraging proven emcellent parser
+- More reliable AST-based parsing
 
 ### Areas of Uncertainty
-- MUMPS parsing complexity (many edge cases)
+- MUMPS parsing edge cases
 - Performance at scale (20,000+ files)
 - Entry point detection heuristics
 
 ### Mitigation
 - Start with subset (Registration package)
-- Implement both parsers for comparison
 - Extensive logging and validation
-- Iterative refinement based on results
+- Iterative refinement based on patterns found
+- Performance profiling and optimization
 
 
