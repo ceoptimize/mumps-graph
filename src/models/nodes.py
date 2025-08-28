@@ -137,3 +137,54 @@ DATA_TYPE_MAP = {
     "K": "MUMPS",
     "M": "Multiple",
 }
+
+
+class CrossReferenceNode(BaseModel):
+    """Cross-reference/index definition from DD."""
+
+    xref_id: str = Field(default_factory=lambda: str(uuid4()))
+    name: str  # XRef name (e.g., "B", "AVAFC391")
+    file_number: str  # File containing the xref
+    field_number: str  # Field being indexed
+    xref_type: str  # "regular", "trigger", "new-style", "MUMPS"
+    xref_number: str  # XRef number in DD
+    set_logic: Optional[str] = None
+    kill_logic: Optional[str] = None
+    execution: str = "field"  # "field", "record", "global"
+    description: Optional[str] = None
+
+    def dict_for_neo4j(self) -> Dict[str, Any]:
+        """Convert to dict for Neo4j node creation."""
+        return {
+            "xref_id": self.xref_id,
+            "name": self.name,
+            "file_number": self.file_number,
+            "field_number": self.field_number,
+            "xref_type": self.xref_type,
+            "xref_number": self.xref_number,
+            "set_logic": self.set_logic,
+            "kill_logic": self.kill_logic,
+            "execution": self.execution,
+            "description": self.description,
+        }
+
+
+class SubfileNode(FileNode):
+    """Subfile is a special type of File with parent relationship."""
+
+    parent_file_number: str  # Parent file number
+    parent_field_number: str  # Multiple field that contains this subfile
+    nesting_level: int = 1  # How deep in the hierarchy
+
+    def dict_for_neo4j(self) -> Dict[str, Any]:
+        """Convert to dict for Neo4j node creation."""
+        base_dict = super().dict_for_neo4j()
+        base_dict.update(
+            {
+                "parent_file_number": self.parent_file_number,
+                "parent_field_number": self.parent_field_number,
+                "nesting_level": self.nesting_level,
+                "is_subfile": True,  # Ensure this is set
+            }
+        )
+        return base_dict

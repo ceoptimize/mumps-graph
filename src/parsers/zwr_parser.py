@@ -4,7 +4,13 @@ import re
 from pathlib import Path
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
-from src.models.nodes import FieldNode, FileNode, ParsedGlobal
+from src.models.nodes import (
+    CrossReferenceNode,
+    FieldNode,
+    FileNode,
+    ParsedGlobal,
+    SubfileNode,
+)
 
 
 class ZWRParser:
@@ -139,8 +145,8 @@ class ZWRParser:
                 continue
 
             # Look for file name entries: ^DD(file_num,0,"NM","NAME")=""
-            if (len(parsed.subscripts) >= 4 and 
-                parsed.subscripts[1] == "0" and 
+            if (len(parsed.subscripts) >= 4 and
+                parsed.subscripts[1] == "0" and
                 parsed.subscripts[2] == "NM"):
                 file_number = parsed.subscripts[0]
                 file_name = parsed.subscripts[3]
@@ -169,7 +175,7 @@ class ZWRParser:
         # Update internal state for statistics
         self.files = files
         self.fields = fields
-        
+
         return files, fields
 
     def _process_file_header(self, parsed: ParsedGlobal) -> Optional[FileNode]:
@@ -295,7 +301,7 @@ class ZWRParser:
             lines = f.readlines()
 
         return self.extract_file_definitions(lines)
-    
+
     def parse_dic_file(self, file_path: Path, files: Dict[str, FileNode]):
         """
         Parse DIC file to extract global roots.
@@ -309,13 +315,13 @@ class ZWRParser:
                 parsed = self.parse_line(line)
                 if not parsed:
                     continue
-                    
+
                 # Look for DIC global root entries: ^DIC(file_num,0,"GL")="^GLOBAL("
-                if (parsed.global_name == "DIC" and 
-                    len(parsed.subscripts) == 3 and 
-                    parsed.subscripts[1] == "0" and 
+                if (parsed.global_name == "DIC" and
+                    len(parsed.subscripts) == 3 and
+                    parsed.subscripts[1] == "0" and
                     parsed.subscripts[2] == "GL"):
-                    
+
                     file_number = parsed.subscripts[0]
                     if file_number in files:
                         # Clean up the global root value
@@ -354,3 +360,231 @@ class ZWRParser:
             "computed_fields_count": sum(1 for f in self.fields if f.is_computed),
             "required_fields_count": sum(1 for f in self.fields if f.required),
         }
+
+    # Phase 2: Enhanced parsing methods for relationships
+
+    def extract_cross_references(
+        self, lines: List[str]
+    ) -> Dict[str, CrossReferenceNode]:
+        """
+        Extract cross-reference definitions from DD.
+
+        Parses DD(file,field,1,...) nodes for cross-reference information.
+
+        Args:
+            lines: List of ZWR lines
+
+        Returns:
+            Dict of xref_id -> CrossReferenceNode
+        """
+        xrefs = {}
+        xref_definitions = {}  # Temporary storage for xref details
+
+        for line in lines:
+            parsed = self.parse_line(line)
+            if not parsed or not parsed.is_dd_entry():
+                continue
+
+            # Look for cross-reference entries: DD(file,field,1,...)
+            if len(parsed.subscripts) >= 3 and parsed.subscripts[2] == "1":
+                file_number = parsed.subscripts[0]
+                field_number = parsed.subscripts[1]
+
+                # Check for xref header: DD(file,field,1,0)="^.1"
+                if len(parsed.subscripts) == 4 and parsed.subscripts[3] == "0":
+                    if parsed.value == "^.1":
+                        # This field has cross-references
+                        xref_key = f"{file_number}_{field_number}"
+                        xref_definitions[xref_key] = {
+                            "file_number": file_number,
+                            "field_number": field_number,
+                        }
+
+                # Check for specific xref definition: DD(file,field,1,xref_num,0)
+                elif len(parsed.subscripts) == 5 and parsed.subscripts[4] == "0":
+                    xref_num = parsed.subscripts[3]
+                    xref_key = f"{file_number}_{field_number}"
+
+                    if xref_key in xref_definitions:
+                        # Parse xref definition value (e.g., "2^AVAFC391^MUMPS")
+                        parts = parsed.value.split("^")
+                        if len(parts) >= 2:
+                            xref_name = parts[1] if len(parts) > 1 else f"XREF_{xref_num}"
+                            xref_type = parts[2] if len(parts) > 2 else "regular"
+
+                            xref_id = f"{xref_key}_{xref_num}"
+                            xref_definitions[xref_id] = {
+                                "file_number": file_number,
+                                "field_number": field_number,
+                                "xref_number": xref_num,
+                                "name": xref_name,
+                                "xref_type": xref_type,
+                            }
+
+                # Check for SET logic: DD(file,field,1,xref_num,1)
+                elif (
+                    len(parsed.subscripts) == 5
+                    and parsed.subscripts[4] == "1"
+                ):
+                    xref_num = parsed.subscripts[3]
+                    xref_id = f"{file_number}_{field_number}_{xref_num}"
+                    if xref_id in xref_definitions:
+                        xref_definitions[xref_id]["set_logic"] = parsed.value
+
+                # Check for KILL logic: DD(file,field,1,xref_num,2)
+                elif (
+                    len(parsed.subscripts) == 5
+                    and parsed.subscripts[4] == "2"
+                ):
+                    xref_num = parsed.subscripts[3]
+                    xref_id = f"{file_number}_{field_number}_{xref_num}"
+                    if xref_id in xref_definitions:
+                        xref_definitions[xref_id]["kill_logic"] = parsed.value
+
+        # Convert to CrossReferenceNode objects
+        for xref_id, xref_data in xref_definitions.items():
+            if "name" in xref_data:  # Only create nodes for complete xrefs
+                xref_node = CrossReferenceNode(
+                    xref_id=xref_id,
+                    name=xref_data.get("name", ""),
+                    file_number=xref_data["file_number"],
+                    field_number=xref_data["field_number"],
+                    xref_type=xref_data.get("xref_type", "regular"),
+                    xref_number=xref_data["xref_number"],
+                    set_logic=xref_data.get("set_logic"),
+                    kill_logic=xref_data.get("kill_logic"),
+                )
+                xrefs[xref_id] = xref_node
+
+        return xrefs
+
+    def extract_subfiles(
+        self, files: Dict[str, FileNode]
+    ) -> Dict[str, SubfileNode]:
+        """
+        Identify and create subfile nodes from file definitions.
+
+        Subfiles are identified by decimal file numbers (e.g., 2.01 is subfile of 2).
+
+        Args:
+            files: Dict of file_number -> FileNode
+
+        Returns:
+            Dict of file_number -> SubfileNode
+        """
+        subfiles = {}
+
+        for file_num, file_node in files.items():
+            # Check if this is a subfile (contains decimal point)
+            if "." in file_num:
+                # Parse parent file number
+                parts = file_num.split(".")
+                parent_num = parts[0]
+
+                # Calculate nesting level (number of dots + 1)
+                nesting_level = len(parts)
+
+                # Find parent field number (the field that contains this subfile)
+                # This would typically be parsed from DD entries
+                parent_field = self._find_parent_field(file_num)
+
+                subfile_node = SubfileNode(
+                    file_id=file_node.file_id,
+                    number=file_node.number,
+                    name=file_node.name,
+                    global_root=file_node.global_root,
+                    parent_file=file_node.parent_file,
+                    is_subfile=True,
+                    description=file_node.description,
+                    last_modified=file_node.last_modified,
+                    version=file_node.version,
+                    parent_file_number=parent_num,
+                    parent_field_number=parent_field,
+                    nesting_level=nesting_level,
+                )
+                subfiles[file_num] = subfile_node
+
+        return subfiles
+
+    def extract_variable_pointers(
+        self, lines: List[str]
+    ) -> Dict[str, List[Dict[str, str]]]:
+        """
+        Extract V-type (variable pointer) targets from DD.
+
+        Parses DD(file,field,"V",n,0) entries for variable pointer information.
+
+        Args:
+            lines: List of ZWR lines
+
+        Returns:
+            Dict of field_key -> list of target dicts
+        """
+        v_pointers = {}  # field_key -> list of targets
+
+        for line in lines:
+            parsed = self.parse_line(line)
+            if not parsed or not parsed.is_dd_entry():
+                continue
+
+            # Look for variable pointer entries: DD(file,field,"V",n,0)
+            if (
+                len(parsed.subscripts) == 5
+                and parsed.subscripts[2] == "V"
+                and parsed.subscripts[4] == "0"
+            ):
+                file_number = parsed.subscripts[0]
+                field_number = parsed.subscripts[1]
+                v_number = parsed.subscripts[3]
+                field_key = f"{file_number}_{field_number}"
+
+                # Parse target info (e.g., "target_file^target_global^description")
+                parts = parsed.value.split("^")
+                target_info = {
+                    "v_number": v_number,
+                    "target_file": parts[0] if parts else "",
+                    "target_global": parts[1] if len(parts) > 1 else "",
+                    "target_description": parts[2] if len(parts) > 2 else "",
+                }
+
+                if field_key not in v_pointers:
+                    v_pointers[field_key] = []
+                v_pointers[field_key].append(target_info)
+
+        return v_pointers
+
+    def _find_parent_field(self, subfile_number: str) -> str:
+        """
+        Find the parent field number for a subfile.
+
+        This is a simplified version - in reality, this would need to
+        parse DD entries to find the Multiple field that points to this subfile.
+
+        Args:
+            subfile_number: The subfile number (e.g., "2.01")
+
+        Returns:
+            Parent field number or empty string if not found
+        """
+        # For now, return a placeholder - this would be enhanced
+        # by parsing DD entries for Multiple fields
+        return ""
+
+    def is_xref_header(self, parsed: ParsedGlobal) -> bool:
+        """Check if this is a cross-reference header entry."""
+        return (
+            parsed.is_dd_entry()
+            and len(parsed.subscripts) == 4
+            and parsed.subscripts[2] == "1"
+            and parsed.subscripts[3] == "0"
+            and parsed.value == "^.1"
+        )
+
+    def is_v_pointer_target(self, parsed: ParsedGlobal) -> bool:
+        """Check if this is a variable pointer target entry."""
+        return (
+            parsed.is_dd_entry()
+            and len(parsed.subscripts) == 5
+            and parsed.subscripts[2] == "V"
+            and parsed.subscripts[4] == "0"
+        )

@@ -4,7 +4,6 @@ import argparse
 import logging
 import sys
 import time
-from pathlib import Path
 
 from dotenv import load_dotenv
 from rich.console import Console
@@ -96,9 +95,10 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def display_welcome():
+def display_welcome(phase: int = 1):
     """Display welcome banner."""
-    welcome_text = """
+    if phase == 1:
+        welcome_text = """
 [bold cyan]VistA Graph Database[/bold cyan]
 [yellow]Phase 1: Foundation Implementation[/yellow]
 
@@ -111,7 +111,25 @@ This will create:
 • File nodes
 • Field nodes
 • Relationships between entities
-    """
+        """
+    elif phase == 2:
+        welcome_text = """
+[bold cyan]VistA Graph Database[/bold cyan]
+[yellow]Phase 2: Static Relationships[/yellow]
+
+Extracting deterministic relationships:
+• Cross-reference definitions
+• Subfile hierarchies
+• Variable pointer targets
+
+This will create:
+• CrossReference nodes
+• INDEXED_BY relationships
+• SUBFILE_OF relationships
+• VARIABLE_POINTER relationships
+        """
+    else:
+        welcome_text = f"[bold cyan]VistA Graph Database[/bold cyan]\n[yellow]Phase {phase}[/yellow]"
 
     console.print(Panel.fit(welcome_text, title="Welcome", border_style="cyan"))
 
@@ -231,6 +249,184 @@ def phase1_pipeline(args):
     console.print("\n[green]✅ Phase 1 completed successfully![/green]")
 
 
+def phase2_pipeline(args):
+    """
+    Execute Phase 2 pipeline: Extract static relationships.
+
+    Args:
+        args: Command line arguments
+    """
+    settings = get_settings()
+
+    # Initialize Neo4j connection
+    console.print("\n[cyan]Connecting to Neo4j...[/cyan]")
+    connection = Neo4jConnection()
+
+    if not connection.connect():
+        console.print("[red]❌ Failed to connect to Neo4j![/red]")
+        console.print(
+            "[yellow]Make sure Neo4j is running:[/yellow]\n"
+            "  docker-compose -f docker/docker-compose.yml up -d"
+        )
+        sys.exit(1)
+    console.print("[green]✅ Connected to Neo4j[/green]")
+
+    # Check if Phase 1 has been completed
+    console.print("\n[cyan]Checking Phase 1 completion...[/cyan]")
+    db_info = connection.get_database_info()
+
+    if not db_info or db_info.get("total_nodes", 0) == 0:
+        console.print("[red]❌ Phase 1 must be completed first![/red]")
+        console.print("Run: python -m src.main --phase 1")
+        sys.exit(1)
+
+    console.print(f"[green]✅ Found {db_info['total_nodes']} nodes from Phase 1[/green]")
+
+    # Parse DD.zwr for extended information
+    console.print("\n[cyan]Parsing DD.zwr for Phase 2 relationships...[/cyan]")
+    zwr_parser = ZWRParser()
+    dd_path = settings.get_absolute_path(settings.dd_file_path)
+
+    # Read DD file
+    with open(dd_path, "r", encoding="utf-8", errors="ignore") as f:
+        dd_lines = f.readlines()
+
+    console.print(f"[dim]Read {len(dd_lines)} lines from DD.zwr[/dim]")
+
+    # Parse Phase 1 data first (needed for Phase 2 relationships)
+    console.print("[cyan]Extracting file and field definitions...[/cyan]")
+    files, fields = zwr_parser.extract_file_definitions(dd_lines)
+
+    # Extract Phase 2 specific data
+    console.print("[cyan]Extracting cross-references...[/cyan]")
+    xrefs = zwr_parser.extract_cross_references(dd_lines)
+    console.print(f"[green]✅ Found {len(xrefs)} cross-reference definitions[/green]")
+
+    console.print("[cyan]Identifying subfiles...[/cyan]")
+    subfiles = zwr_parser.extract_subfiles(files)
+    console.print(f"[green]✅ Found {len(subfiles)} subfiles[/green]")
+
+    console.print("[cyan]Extracting variable pointer targets...[/cyan]")
+    v_pointers = zwr_parser.extract_variable_pointers(dd_lines)
+    console.print(f"[green]✅ Found {len(v_pointers)} variable pointer fields[/green]")
+
+    # Build Phase 2 graph extensions
+    console.print("\n[cyan]Building Phase 2 graph extensions...[/cyan]")
+    builder = GraphBuilder(connection, batch_size=args.batch_size)
+
+    # Create new node types
+    if xrefs:
+        console.print("[cyan]Creating CrossReference nodes...[/cyan]")
+        xref_count = builder.create_cross_reference_nodes(xrefs)
+        console.print(f"[green]✅ Created {xref_count} CrossReference nodes[/green]")
+
+    # Create Phase 2 relationships
+    if xrefs and fields:
+        console.print("[cyan]Creating INDEXED_BY relationships...[/cyan]")
+        indexed_count = builder.create_indexed_by_relationships(xrefs, fields)
+        console.print(f"[green]✅ Created {indexed_count} INDEXED_BY relationships[/green]")
+
+    if subfiles:
+        console.print("[cyan]Creating SUBFILE_OF relationships...[/cyan]")
+        subfile_count = builder.create_subfile_relationships(subfiles, files)
+        console.print(f"[green]✅ Created {subfile_count} SUBFILE_OF relationships[/green]")
+
+    if v_pointers:
+        console.print("[cyan]Creating VARIABLE_POINTER relationships...[/cyan]")
+        vpointer_count = builder.create_variable_pointer_relationships(
+            v_pointers, fields, files
+        )
+        console.print(f"[green]✅ Created {vpointer_count} VARIABLE_POINTER relationships[/green]")
+
+    # Validate Phase 2
+    console.print("\n[cyan]Validating Phase 2 results...[/cyan]")
+    validate_phase2(connection)
+
+    # Display summary
+    display_phase2_results(
+        xref_count if xrefs else 0,
+        indexed_count if xrefs and fields else 0,
+        subfile_count if subfiles else 0,
+        vpointer_count if v_pointers else 0,
+    )
+
+    # Disconnect
+    connection.disconnect()
+    console.print("\n[green]✅ Phase 2 completed successfully![/green]")
+
+
+def validate_phase2(connection: Neo4jConnection):
+    """
+    Validate Phase 2 specific relationships.
+    
+    Args:
+        connection: Neo4j connection
+    """
+    from src.graph.queries import GraphQueries
+
+    queries = GraphQueries()
+
+    # Run Phase 2 validation query
+    validation_query = queries.validate_phase2_relationships()
+    results = connection.execute_query(validation_query)
+
+    if results:
+        # Create validation table
+        table = Table(title="Phase 2 Validation", show_header=True)
+        table.add_column("Relationship Type", style="cyan")
+        table.add_column("Expected Min", justify="right")
+        table.add_column("Actual Count", justify="right")
+        table.add_column("Status", justify="center")
+
+        has_failures = False
+        for result in results:
+            status_color = "green" if result["status"] == "PASS" else "red"
+            table.add_row(
+                result["relationship_type"],
+                str(result["expected_minimum"]),
+                str(result["actual_count"]),
+                f"[{status_color}]{result['status']}[/{status_color}]",
+            )
+            if result["status"] == "FAIL":
+                has_failures = True
+
+        console.print(table)
+
+        if has_failures:
+            console.print("\n[yellow]⚠️  Some validation checks failed[/yellow]")
+            console.print("[dim]This may be normal depending on your DD.zwr content[/dim]")
+    else:
+        console.print("[yellow]⚠️  Could not run validation query[/yellow]")
+
+
+def display_phase2_results(xrefs: int, indexed: int, subfiles: int, vpointers: int):
+    """
+    Display Phase 2 execution results.
+    
+    Args:
+        xrefs: Number of cross-reference nodes created
+        indexed: Number of INDEXED_BY relationships created
+        subfiles: Number of SUBFILE_OF relationships created
+        vpointers: Number of VARIABLE_POINTER relationships created
+    """
+    table = Table(title="Phase 2 Results", show_header=True)
+    table.add_column("Entity Type", style="cyan")
+    table.add_column("Count", justify="right", style="green")
+
+    table.add_row("CrossReference nodes", str(xrefs))
+    table.add_row("INDEXED_BY relationships", str(indexed))
+    table.add_row("SUBFILE_OF relationships", str(subfiles))
+    table.add_row("VARIABLE_POINTER relationships", str(vpointers))
+    table.add_row("", "")
+    table.add_row(
+        "[bold]Total new entities[/bold]",
+        f"[bold]{xrefs + indexed + subfiles + vpointers}[/bold]",
+    )
+
+    console.print("\n")
+    console.print(table)
+
+
 def validate_graph(connection: Neo4jConnection):
     """
     Validate the created graph.
@@ -329,12 +525,14 @@ def main():
     setup_logging(args.log_level)
 
     # Display welcome
-    display_welcome()
+    display_welcome(args.phase)
 
     try:
         # Execute phase
         if args.phase == 1:
             phase1_pipeline(args)
+        elif args.phase == 2:
+            phase2_pipeline(args)
         else:
             console.print(f"[red]Phase {args.phase} not implemented yet![/red]")
             sys.exit(1)

@@ -8,11 +8,20 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from src.graph.connection import Neo4jConnection
 from src.graph.queries import GraphQueries
-from src.models.nodes import FieldNode, FileNode, PackageNode
+from src.models.nodes import (
+    CrossReferenceNode,
+    FieldNode,
+    FileNode,
+    PackageNode,
+    SubfileNode,
+)
 from src.models.relationships import (
     ContainsFieldRel,
     ContainsFileRel,
+    IndexedByRel,
     PointsToRel,
+    SubfileOfRel,
+    VariablePointerRel,
 )
 
 logger = logging.getLogger(__name__)
@@ -430,3 +439,278 @@ class GraphBuilder:
             validation["dangling_pointers"] = dangling_pointers[0]["count"]
 
         return validation
+
+    # Phase 2: Enhanced relationship methods
+
+    def create_cross_reference_nodes(
+        self, xrefs: Dict[str, CrossReferenceNode]
+    ) -> int:
+        """
+        Create cross-reference nodes in Neo4j.
+
+        Args:
+            xrefs: Dictionary of xref_id -> CrossReferenceNode
+
+        Returns:
+            Number of cross-reference nodes created
+        """
+        if not xrefs:
+            logger.info("No cross-reference nodes to create")
+            return 0
+
+        xref_list = list(xrefs.values())
+        count = 0
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task(
+                f"[cyan]Creating {len(xref_list)} cross-reference nodes...",
+                total=len(xref_list),
+            )
+
+            for batch in chunks(xref_list, self.batch_size):
+                query = self.queries.batch_create_nodes("CrossReference")
+                batch_data = [xref.dict_for_neo4j() for xref in batch]
+
+                try:
+                    result = self.connection.execute_query(
+                        query, {"batch": batch_data}
+                    )
+                    if result:
+                        count += len(batch)
+                    progress.advance(task, len(batch))
+                except Exception as e:
+                    logger.error(f"Failed to create xref batch: {e}")
+
+        logger.info(f"Created {count} CrossReference nodes")
+        return count
+
+    def create_indexed_by_relationships(
+        self,
+        xrefs: Dict[str, CrossReferenceNode],
+        fields: List[FieldNode],
+    ) -> int:
+        """
+        Create INDEXED_BY relationships between fields and cross-references.
+
+        Args:
+            xrefs: Dictionary of xref_id -> CrossReferenceNode
+            fields: List of FieldNode objects
+
+        Returns:
+            Number of relationships created
+        """
+        if not xrefs or not fields:
+            return 0
+
+        relationships = []
+
+        # Build relationships between fields and their xrefs
+        for _xref_id, xref in xrefs.items():
+            # Find matching field
+            for field in fields:
+                if (
+                    field.file_number == xref.file_number
+                    and field.number == xref.field_number
+                ):
+                    rel = IndexedByRel(
+                        field_id=field.field_id,
+                        xref_id=xref.xref_id,
+                        xref_name=xref.name,
+                        xref_type=xref.xref_type,
+                        set_condition=xref.set_logic,
+                        kill_condition=xref.kill_logic,
+                    )
+                    relationships.append(rel)
+                    break
+
+        if not relationships:
+            return 0
+
+        # Create in batches
+        count = 0
+        query = self.queries.batch_create_relationships("INDEXED_BY")
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task(
+                f"[cyan]Creating {len(relationships)} INDEXED_BY relationships...",
+                total=len(relationships),
+            )
+
+            for batch in chunks(relationships, self.batch_size):
+                batch_data = [
+                    {
+                        "from_id": rel.from_id,
+                        "to_id": rel.to_id,
+                        "props": rel.to_cypher_props(),
+                    }
+                    for rel in batch
+                ]
+
+                try:
+                    result = self.connection.execute_query(
+                        query, {"batch": batch_data}
+                    )
+                    if result:
+                        count += len(batch)
+                    progress.advance(task, len(batch))
+                except Exception as e:
+                    logger.error(f"Failed to create INDEXED_BY relationships: {e}")
+
+        logger.info(f"Created {count} INDEXED_BY relationships")
+        return count
+
+    def create_subfile_relationships(
+        self, subfiles: Dict[str, SubfileNode], files: Dict[str, FileNode]
+    ) -> int:
+        """
+        Create SUBFILE_OF relationships between subfiles and parent files.
+
+        Args:
+            subfiles: Dictionary of subfile_number -> SubfileNode
+            files: Dictionary of file_number -> FileNode
+
+        Returns:
+            Number of relationships created
+        """
+        if not subfiles:
+            return 0
+
+        relationships = []
+
+        for _subfile_num, subfile in subfiles.items():
+            # Find parent file
+            parent_num = subfile.parent_file_number
+            if parent_num in files:
+                parent_file = files[parent_num]
+                rel = SubfileOfRel(
+                    subfile_id=subfile.file_id,
+                    parent_file_id=parent_file.file_id,
+                    parent_field=subfile.parent_field_number,
+                    level=subfile.nesting_level,
+                )
+                relationships.append(rel)
+
+        if not relationships:
+            return 0
+
+        # Create in batches
+        count = 0
+        query = self.queries.batch_create_relationships("SUBFILE_OF")
+
+        for batch in chunks(relationships, self.batch_size):
+            batch_data = [
+                {
+                    "from_id": rel.from_id,
+                    "to_id": rel.to_id,
+                    "props": rel.to_cypher_props(),
+                }
+                for rel in batch
+            ]
+
+            try:
+                result = self.connection.execute_query(query, {"batch": batch_data})
+                if result:
+                    count += len(batch)
+            except Exception as e:
+                logger.error(f"Failed to create SUBFILE_OF relationships: {e}")
+
+        logger.info(f"Created {count} SUBFILE_OF relationships")
+        return count
+
+    def create_variable_pointer_relationships(
+        self,
+        v_pointers: Dict[str, List[Dict[str, str]]],
+        fields: List[FieldNode],
+        files: Dict[str, FileNode],
+    ) -> int:
+        """
+        Create multiple POINTS_TO relationships for V-type fields.
+
+        Args:
+            v_pointers: Dict of field_key -> list of target info
+            fields: List of FieldNode objects
+            files: Dictionary of file_number -> FileNode
+
+        Returns:
+            Number of relationships created
+        """
+        if not v_pointers:
+            return 0
+
+        relationships = []
+
+        for field_key, targets in v_pointers.items():
+            # Parse field key
+            file_num, field_num = field_key.split("_", 1)
+
+            # Find matching field
+            matching_field = None
+            for field in fields:
+                if field.file_number == file_num and field.number == field_num:
+                    matching_field = field
+                    break
+
+            if not matching_field:
+                continue
+
+            # Create relationship for each target
+            for target in targets:
+                target_file_num = target.get("target_file", "")
+                if target_file_num in files:
+                    target_file = files[target_file_num]
+                    rel = VariablePointerRel(
+                        field_id=matching_field.field_id,
+                        target_file_id=target_file.file_id,
+                        target_file=target_file_num,
+                        target_global=target.get("target_global", ""),
+                        target_description=target.get("target_description"),
+                        v_number=target.get("v_number"),
+                    )
+                    relationships.append(rel)
+
+        if not relationships:
+            return 0
+
+        # Create in batches
+        count = 0
+        query = self.queries.batch_create_relationships("VARIABLE_POINTER")
+
+        for batch in chunks(relationships, self.batch_size):
+            batch_data = [
+                {
+                    "from_id": rel.from_id,
+                    "to_id": rel.to_id,
+                    "props": rel.to_cypher_props(),
+                }
+                for rel in batch
+            ]
+
+            try:
+                result = self.connection.execute_query(query, {"batch": batch_data})
+                if result:
+                    count += len(batch)
+            except Exception as e:
+                logger.error(f"Failed to create VARIABLE_POINTER relationships: {e}")
+
+        logger.info(f"Created {count} VARIABLE_POINTER relationships")
+        return count
+
+    def enhance_pointer_relationships(self) -> int:
+        """
+        Enhance existing pointer relationships with additional metadata.
+
+        Returns:
+            Number of relationships enhanced
+        """
+        # This could be used to add laygo, required, and other pointer attributes
+        # by querying additional DD entries and updating existing relationships
+        logger.info("Pointer relationship enhancement - future enhancement")
+        return 0

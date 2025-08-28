@@ -15,6 +15,8 @@ class RelationshipType(Enum):
     COMPUTED_FROM = "COMPUTED_FROM"
     SUBFILE_OF = "SUBFILE_OF"
     BELONGS_TO_PACKAGE = "BELONGS_TO_PACKAGE"
+    INDEXED_BY = "INDEXED_BY"
+    VARIABLE_POINTER = "VARIABLE_POINTER"
 
 
 class Relationship(BaseModel):
@@ -94,13 +96,85 @@ class ComputedFromRel(Relationship):
 
 
 class SubfileOfRel(Relationship):
-    """Subfile relationship to parent file."""
+    """Subfile relationship to parent file with enhanced metadata."""
 
     relationship_type: RelationshipType = RelationshipType.SUBFILE_OF
 
-    def __init__(self, subfile_id: str, parent_file_id: str):
+    def __init__(
+        self,
+        subfile_id: str,
+        parent_file_id: str,
+        parent_field: str,
+        level: int = 1,
+    ):
         super().__init__(
             from_id=subfile_id,
             to_id=parent_file_id,
             confidence=1.0,
+            metadata={
+                "parent_field": parent_field,
+                "level": level,
+            },
+        )
+
+
+class IndexedByRel(Relationship):
+    """Field INDEXED_BY CrossReference relationship."""
+
+    relationship_type: RelationshipType = RelationshipType.INDEXED_BY
+
+    def __init__(
+        self,
+        field_id: str,
+        xref_id: str,
+        xref_name: str,
+        xref_type: str,
+        set_condition: str = None,
+        kill_condition: str = None,
+    ):
+        metadata = {
+            "xref_name": xref_name,
+            "xref_type": xref_type,
+        }
+        if set_condition:
+            metadata["set_condition"] = set_condition
+        if kill_condition:
+            metadata["kill_condition"] = kill_condition
+
+        super().__init__(
+            from_id=field_id,
+            to_id=xref_id,
+            confidence=1.0,
+            metadata=metadata,
+        )
+
+
+class VariablePointerRel(Relationship):
+    """Variable pointer can point to multiple files."""
+
+    relationship_type: RelationshipType = RelationshipType.VARIABLE_POINTER
+
+    def __init__(
+        self,
+        field_id: str,
+        target_file_id: str,
+        target_file: str,
+        target_global: str,
+        target_description: str = None,
+        v_number: str = None,
+    ):
+        metadata = {
+            "target_file": target_file,
+            "target_global": target_global,
+        }
+        if target_description:
+            metadata["target_description"] = target_description
+        if v_number:
+            metadata["v_number"] = v_number
+
+        super().__init__(
+            from_id=field_id,
+            to_id=target_file_id,
+            confidence=1.0,
+            metadata=metadata,
         )

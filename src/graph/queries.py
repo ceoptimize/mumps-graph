@@ -42,6 +42,8 @@ class GraphQueries:
             "POINTS_TO": ("Field", "field_id", "File", "file_id"),
             "COMPUTED_FROM": ("Field", "field_id", "Field", "field_id"),
             "SUBFILE_OF": ("File", "file_id", "File", "file_id"),
+            "INDEXED_BY": ("Field", "field_id", "CrossReference", "xref_id"),
+            "VARIABLE_POINTER": ("Field", "field_id", "File", "file_id"),
         }
 
         if rel_type not in rel_mapping:
@@ -285,4 +287,157 @@ class GraphQueries:
                         source.name AS file_name,
                         count(field) AS reference_count
         ORDER BY reference_count DESC
+        """
+
+    # Phase 2: Cross-reference and subfile specific queries
+
+    @staticmethod
+    def find_subfiles(parent_number: Optional[str] = None) -> str:
+        """
+        Generate query to find all subfiles or subfiles of a specific parent.
+
+        Args:
+            parent_number: Optional parent file number
+
+        Returns:
+            Cypher query string
+        """
+        if parent_number:
+            return """
+            MATCH (parent:File {number: $parent_number})
+            MATCH (child:File)-[:SUBFILE_OF]->(parent)
+            RETURN parent.name AS parent_name,
+                   child.number AS subfile_number,
+                   child.name AS subfile_name
+            ORDER BY child.number
+            """
+        return """
+        MATCH (child:File)-[r:SUBFILE_OF]->(parent:File)
+        RETURN parent.number AS parent_number,
+               parent.name AS parent_name,
+               child.number AS subfile_number,
+               child.name AS subfile_name,
+               r.level AS nesting_level
+        ORDER BY parent.number, child.number
+        """
+
+    @staticmethod
+    def get_field_cross_references(file_number: str, field_number: str) -> str:
+        """
+        Generate query to get all cross-references for a specific field.
+
+        Args:
+            file_number: File number
+            field_number: Field number
+
+        Returns:
+            Cypher query string
+        """
+        return """
+        MATCH (f:Field {file_number: $file_number, number: $field_number})
+        OPTIONAL MATCH (f)-[r:INDEXED_BY]->(x:CrossReference)
+        RETURN f AS field,
+               collect({
+                   name: x.name,
+                   type: x.xref_type,
+                   set_logic: r.set_condition,
+                   kill_logic: r.kill_condition
+               }) AS cross_references
+        """
+
+    @staticmethod
+    def get_variable_pointer_targets(field_id: str) -> str:
+        """
+        Generate query to get all targets of a variable pointer field.
+
+        Args:
+            field_id: Field ID
+
+        Returns:
+            Cypher query string
+        """
+        return """
+        MATCH (f:Field {field_id: $field_id})
+        WHERE f.data_type = 'V'
+        MATCH (f)-[r:VARIABLE_POINTER]->(target:File)
+        RETURN f.name AS field_name,
+               collect({
+                   file: target.number,
+                   name: target.name,
+                   global: r.target_global,
+                   description: r.target_description
+               }) AS targets
+        """
+
+    @staticmethod
+    def count_cross_references_by_file() -> str:
+        """Generate query to count cross-references per file."""
+        return """
+        MATCH (x:CrossReference)
+        RETURN x.file_number AS file_number,
+               count(x) AS xref_count
+        ORDER BY xref_count DESC
+        """
+
+    @staticmethod
+    def find_most_indexed_fields() -> str:
+        """Generate query to find fields with the most cross-references."""
+        return """
+        MATCH (f:Field)-[:INDEXED_BY]->(x:CrossReference)
+        WITH f, count(x) AS xref_count
+        RETURN f.file_number AS file_number,
+               f.number AS field_number,
+               f.name AS field_name,
+               xref_count
+        ORDER BY xref_count DESC
+        LIMIT 20
+        """
+
+    @staticmethod
+    def get_subfile_hierarchy(root_file: Optional[str] = None) -> str:
+        """
+        Generate query to get the complete subfile hierarchy.
+
+        Args:
+            root_file: Optional root file to start from
+
+        Returns:
+            Cypher query string
+        """
+        if root_file:
+            return """
+            MATCH path = (root:File {number: $root_file})<-[:SUBFILE_OF*]-(sub:File)
+            RETURN path
+            ORDER BY length(path)
+            """
+        return """
+        MATCH (f:File)
+        WHERE NOT (f)-[:SUBFILE_OF]->()
+        OPTIONAL MATCH path = (f)<-[:SUBFILE_OF*]-(sub:File)
+        RETURN f.number AS root_file,
+               f.name AS root_name,
+               count(sub) AS subfile_count
+        ORDER BY subfile_count DESC
+        """
+
+    @staticmethod
+    def validate_phase2_relationships() -> str:
+        """Generate query to validate Phase 2 relationships."""
+        return """
+        WITH [
+            {type: 'INDEXED_BY', expected_min: 100},
+            {type: 'SUBFILE_OF', expected_min: 10},
+            {type: 'VARIABLE_POINTER', expected_min: 1}
+        ] AS checks
+        UNWIND checks AS check
+        OPTIONAL MATCH ()-[r]->()
+        WHERE type(r) = check.type
+        WITH check, count(r) AS actual_count
+        RETURN check.type AS relationship_type,
+               check.expected_min AS expected_minimum,
+               actual_count,
+               CASE
+                   WHEN actual_count >= check.expected_min THEN 'PASS'
+                   ELSE 'FAIL'
+               END AS status
         """
