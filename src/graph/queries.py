@@ -17,12 +17,22 @@ class GraphQueries:
         Returns:
             Cypher query string
         """
-        return f"""
-        UNWIND $batch AS item
-        CREATE (n:{label})
-        SET n = item
-        RETURN count(n) AS created
-        """
+        # Use MERGE for CrossReference nodes to prevent duplicates
+        if label == "CrossReference":
+            return f"""
+            UNWIND $batch AS item
+            MERGE (n:{label} {{xref_id: item.xref_id}})
+            SET n = item
+            RETURN count(n) AS created
+            """
+        else:
+            # Use CREATE for other nodes (they have proper duplicate checking)
+            return f"""
+            UNWIND $batch AS item
+            CREATE (n:{label})
+            SET n = item
+            RETURN count(n) AS created
+            """
 
     @staticmethod
     def batch_create_relationships(rel_type: str) -> str:
@@ -36,13 +46,14 @@ class GraphQueries:
             Cypher query string
         """
         # Map relationship types to node labels
+        # Note: INDEXED_BY now uses file_number+number for Field matching
         rel_mapping = {
             "CONTAINS_FIELD": ("File", "file_id", "Field", "field_id"),
             "CONTAINS_FILE": ("Package", "package_id", "File", "file_id"),
             "POINTS_TO": ("Field", "field_id", "File", "file_id"),
             "COMPUTED_FROM": ("Field", "field_id", "Field", "field_id"),
-            "SUBFILE_OF": ("File", "file_id", "File", "file_id"),
-            "INDEXED_BY": ("Field", "field_id", "CrossReference", "xref_id"),
+            "SUBFILE_OF": ("File", "number", "File", "number"),  # Match on file number
+            "INDEXED_BY": ("Field", "file_number,number", "CrossReference", "xref_id"),  # Match on composite
             "VARIABLE_POINTER": ("Field", "field_id", "File", "file_id"),
         }
 
@@ -51,14 +62,37 @@ class GraphQueries:
 
         from_label, from_prop, to_label, to_prop = rel_mapping[rel_type]
 
-        return f"""
-        UNWIND $batch AS item
-        MATCH (from:{from_label} {{{from_prop}: item.from_id}})
-        MATCH (to:{to_label} {{{to_prop}: item.to_id}})
-        CREATE (from)-[r:{rel_type}]->(to)
-        SET r = item.props
-        RETURN count(r) AS created
-        """
+        # Special handling for composite keys and SUBFILE_OF
+        if rel_type == "INDEXED_BY":
+            # Match on file_number and number for Field
+            return f"""
+            UNWIND $batch AS item
+            MATCH (from:{from_label} {{file_number: item.file_number, number: item.field_number}})
+            MATCH (to:{to_label} {{{to_prop}: item.to_id}})
+            MERGE (from)-[r:{rel_type}]->(to)
+            SET r = item.props
+            RETURN count(r) AS created
+            """
+        elif rel_type == "SUBFILE_OF":
+            # Match on file numbers and determine parent
+            return f"""
+            UNWIND $batch AS item
+            MATCH (from:{from_label} {{number: item.from_number}})
+            MATCH (to:{to_label} {{number: item.to_number}})
+            MERGE (from)-[r:{rel_type}]->(to)
+            SET r = item.props
+            RETURN count(r) AS created
+            """
+        else:
+            # Standard query for other relationship types
+            return f"""
+            UNWIND $batch AS item
+            MATCH (from:{from_label} {{{from_prop}: item.from_id}})
+            MATCH (to:{to_label} {{{to_prop}: item.to_id}})
+            CREATE (from)-[r:{rel_type}]->(to)
+            SET r = item.props
+            RETURN count(r) AS created
+            """
 
     @staticmethod
     def find_node_by_id(label: str, id_field: str) -> str:

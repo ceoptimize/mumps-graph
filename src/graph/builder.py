@@ -508,24 +508,20 @@ class GraphBuilder:
 
         relationships = []
 
-        # Build relationships between fields and their xrefs
+        # Build relationships directly from xrefs
+        # We'll match on file_number and field_number in the query
         for _xref_id, xref in xrefs.items():
-            # Find matching field
-            for field in fields:
-                if (
-                    field.file_number == xref.file_number
-                    and field.number == xref.field_number
-                ):
-                    rel = IndexedByRel(
-                        field_id=field.field_id,
-                        xref_id=xref.xref_id,
-                        xref_name=xref.name,
-                        xref_type=xref.xref_type,
-                        set_condition=xref.set_logic,
-                        kill_condition=xref.kill_logic,
-                    )
-                    relationships.append(rel)
-                    break
+            # Create relationship with placeholder field_id
+            # The actual matching will happen in the Cypher query
+            rel = IndexedByRel(
+                field_id="placeholder",  # Not used in new query
+                xref_id=xref.xref_id,
+                xref_name=xref.name,
+                xref_type=xref.xref_type,
+                set_condition=xref.set_logic,
+                kill_condition=xref.kill_logic,
+            )
+            relationships.append(rel)
 
         if not relationships:
             return 0
@@ -545,21 +541,33 @@ class GraphBuilder:
             )
 
             for batch in chunks(relationships, self.batch_size):
-                batch_data = [
-                    {
-                        "from_id": rel.from_id,
-                        "to_id": rel.to_id,
-                        "props": rel.to_cypher_props(),
-                    }
-                    for rel in batch
-                ]
+                # Special batch data format for INDEXED_BY relationships
+                batch_data = []
+                for rel in batch:
+                    # Find the corresponding xref to get file_number and field_number
+                    xref = next((x for x in xrefs.values() if x.xref_id == rel.to_id), None)
+                    if xref:
+                        batch_data.append({
+                            "file_number": xref.file_number,
+                            "field_number": xref.field_number,
+                            "to_id": rel.to_id,
+                            "props": rel.to_cypher_props(),
+                        })
+
+                if not batch_data:
+                    continue
 
                 try:
                     result = self.connection.execute_query(
                         query, {"batch": batch_data}
                     )
-                    if result:
-                        count += len(batch)
+                    # Extract the actual count from the query result
+                    if result and len(result) > 0 and "created" in result[0]:
+                        created_count = result[0]["created"]
+                        count += created_count
+                        logger.debug(f"Created {created_count} INDEXED_BY relationships in this batch")
+                    else:
+                        logger.warning(f"No INDEXED_BY relationships created in this batch")
                     progress.advance(task, len(batch))
                 except Exception as e:
                     logger.error(f"Failed to create INDEXED_BY relationships: {e}")
@@ -585,14 +593,14 @@ class GraphBuilder:
 
         relationships = []
 
-        for _subfile_num, subfile in subfiles.items():
-            # Find parent file
+        for subfile_num, subfile in subfiles.items():
+            # Store the subfile number and parent number for matching
+            # We'll match on file numbers in the Cypher query
             parent_num = subfile.parent_file_number
-            if parent_num in files:
-                parent_file = files[parent_num]
+            if parent_num:  # Check parent exists
                 rel = SubfileOfRel(
-                    subfile_id=subfile.file_id,
-                    parent_file_id=parent_file.file_id,
+                    subfile_id=subfile_num,  # Use file number as temporary ID
+                    parent_file_id=parent_num,  # Use parent file number as temporary ID
                     parent_field=subfile.parent_field_number,
                     level=subfile.nesting_level,
                 )
@@ -606,10 +614,11 @@ class GraphBuilder:
         query = self.queries.batch_create_relationships("SUBFILE_OF")
 
         for batch in chunks(relationships, self.batch_size):
+            # Special batch data format for SUBFILE_OF relationships
             batch_data = [
                 {
-                    "from_id": rel.from_id,
-                    "to_id": rel.to_id,
+                    "from_number": rel.from_id,  # This is the subfile number
+                    "to_number": rel.to_id,  # This is the parent file number
                     "props": rel.to_cypher_props(),
                 }
                 for rel in batch
@@ -617,8 +626,13 @@ class GraphBuilder:
 
             try:
                 result = self.connection.execute_query(query, {"batch": batch_data})
-                if result:
-                    count += len(batch)
+                # Extract the actual count from the query result
+                if result and len(result) > 0 and "created" in result[0]:
+                    created_count = result[0]["created"]
+                    count += created_count
+                    logger.debug(f"Created {created_count} SUBFILE_OF relationships in this batch")
+                else:
+                    logger.warning(f"No SUBFILE_OF relationships created in this batch")
             except Exception as e:
                 logger.error(f"Failed to create SUBFILE_OF relationships: {e}")
 
@@ -695,8 +709,13 @@ class GraphBuilder:
 
             try:
                 result = self.connection.execute_query(query, {"batch": batch_data})
-                if result:
-                    count += len(batch)
+                # Extract the actual count from the query result
+                if result and len(result) > 0 and "created" in result[0]:
+                    created_count = result[0]["created"]
+                    count += created_count
+                    logger.debug(f"Created {created_count} VARIABLE_POINTER relationships in this batch")
+                else:
+                    logger.warning(f"No VARIABLE_POINTER relationships created in this batch")
             except Exception as e:
                 logger.error(f"Failed to create VARIABLE_POINTER relationships: {e}")
 

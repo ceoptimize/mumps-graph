@@ -25,7 +25,7 @@ Implement a feature using using the PRP file.
 
 4. **Validate**
    - Run each validation command
-   - Fix any failures
+   - Fix any failures - but do not just create "fix" files - actually solve the issue causing the failure
    - Re-run until all pass
 
 5. **Complete**
