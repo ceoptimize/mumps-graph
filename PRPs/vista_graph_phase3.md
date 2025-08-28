@@ -145,7 +145,7 @@ class MUMPSParser:
 
 ## Project Management
 
-**Use Archon MCP Server**: This implementation should be managed using Archon for project and task tracking. Create a project in Archon and break down the implementation into atomic tasks that can be tracked and managed systematically.
+**Use Archon MCP Server**: This implementation should be managed using Archon for project and task tracking. Create a project in Archon called Vista Graph 3 EM and break down the implementation into atomic tasks that can be tracked and managed systematically.
 
 ## Implementation Tasks
 
