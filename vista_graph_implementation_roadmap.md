@@ -164,14 +164,11 @@ This document provides a practical implementation roadmap for building a graph d
   laygo: true  // Can create new entries
 }]->(:File)
 
-// Storage relationships - from global_root in file definition
-(:File)-[:STORED_IN]->(:Global)
+// Storage relationships - moved to Phase 4 with Global node creation
+// (:File)-[:STORED_IN]->(:Global)
 
 // Index relationships - from DD cross-reference definitions
-(:Field)-[:INDEXED_BY {
-  xref_name: "B",
-  type: "regular"  // vs "trigger", "new-style"
-}]->(:Global)
+(:Field)-[:INDEXED_BY]->(:CrossReference)
 ```
 
 #### 3. Code Flow Relationships (Parser Required)
@@ -194,11 +191,15 @@ This document provides a practical implementation roadmap for building a graph d
 (:Label)-[:FALLS_THROUGH]->(:Label)
 ```
 
-#### 4. Global Access Relationships (Medium Confidence)
+#### 4. Global Access Relationships (Phase 4)
 
 **Source**: Parser + pattern matching
 ```cypher
-// Global access patterns
+// Global nodes and storage (created in Phase 4)
+(:Global {name: "DPT"})
+(:File)-[:STORED_IN]->(:Global)
+
+// Global access patterns from code
 (:Label)-[:ACCESSES {
   line: 48,
   access_type: "READ",  // vs "WRITE", "KILL"
@@ -279,27 +280,38 @@ This document provides a practical implementation roadmap for building a graph d
 - CONTAINS_LABEL relationships
 
 ### Phase 4: Code Relationships (Week 7-8)
-**Goal**: Map code interdependencies
+**Goal**: Map code interdependencies and global access patterns
 
 #### Tasks:
-1. **Extract call patterns**
+1. **Create Global nodes (prerequisite)**
+   - Extract global names from File.global_root property
+   - Create Global nodes for each unique global
+   - Create STORED_IN relationships from Files to Globals
+   - Handle globals without File associations (utility globals)
+
+2. **Extract call patterns**
    - Parse DO, GOTO, and $$ calls
    - Match to target labels
    - Handle external routine calls
+   - Create FALLS_THROUGH relationships for sequential flow
 
-2. **Map global access**
-   - Identify global references in code
-   - Distinguish READ vs WRITE
-   - Match to File definitions where possible
+3. **Map global access**
+   - Identify global references in code (^GLOBAL patterns)
+   - Distinguish READ vs WRITE vs KILL operations
+   - Create ACCESSES relationships to Global nodes
+   - Match to File definitions where possible via global_root
 
-3. **Build confidence scoring**
+4. **Build confidence scoring**
    - Mark parser-confirmed (1.0)
    - Mark pattern-matched (0.7)
    - Mark inferred (0.5)
 
 #### Deliverables:
+- Global nodes and STORED_IN relationships
 - CALLS relationships between labels
+- INVOKES relationships for function calls
 - ACCESSES relationships to globals
+- FALLS_THROUGH relationships for control flow
 - Confidence scores on relationships
 
 ### Phase 5: Enhancement & Validation (Week 9-10)

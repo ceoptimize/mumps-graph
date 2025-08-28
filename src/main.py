@@ -15,6 +15,7 @@ from src.config.settings import get_settings
 from src.graph.builder import GraphBuilder
 from src.graph.connection import Neo4jConnection
 from src.parsers.csv_parser import PackageCSVParser
+from src.parsers.routine_parser import RoutineParser
 from src.parsers.zwr_parser import ZWRParser
 
 # Setup rich console
@@ -55,7 +56,8 @@ def parse_arguments():
         "--phase",
         type=int,
         default=1,
-        help="Phase to execute (default: 1)",
+        choices=[1, 2, 3],
+        help="Phase to execute (1: Foundation, 2: Static Relationships, 3: Code Structure)",
     )
 
     parser.add_argument(
@@ -90,6 +92,12 @@ def parse_arguments():
         "--validate-only",
         action="store_true",
         help="Only validate existing graph, don't build",
+    )
+
+    parser.add_argument(
+        "--all-packages",
+        action="store_true",
+        help="Process all packages (Phase 3 only, default: Registration only)",
     )
 
     return parser.parse_args()
@@ -127,6 +135,22 @@ This will create:
 • INDEXED_BY relationships
 • SUBFILE_OF relationships
 • VARIABLE_POINTER relationships
+        """
+    elif phase == 3:
+        welcome_text = """
+[bold cyan]VistA Graph Database[/bold cyan]
+[yellow]Phase 3: Code Structure Implementation[/yellow]
+
+Parsing MUMPS routine files to extract:
+• Routine structure and metadata
+• Labels (entry points/functions)
+• Code organization
+
+This will create:
+• Routine nodes
+• Label nodes
+• CONTAINS_LABEL relationships
+• OWNS_ROUTINE relationships
         """
     else:
         welcome_text = f"[bold cyan]VistA Graph Database[/bold cyan]\n[yellow]Phase {phase}[/yellow]"
@@ -427,6 +451,246 @@ def display_phase2_results(xrefs: int, indexed: int, subfiles: int, vpointers: i
     console.print(table)
 
 
+def phase3_pipeline(args):
+    """
+    Execute Phase 3 pipeline: Parse MUMPS routines and create code structure graph.
+
+    Args:
+        args: Command line arguments
+    """
+    settings = get_settings()
+
+    # Initialize Neo4j connection
+    console.print("\n[cyan]Connecting to Neo4j...[/cyan]")
+    connection = Neo4jConnection()
+
+    if not connection.connect():
+        console.print("[red]❌ Failed to connect to Neo4j![/red]")
+        console.print(
+            "[yellow]Make sure Neo4j is running:[/yellow]\n"
+            "  docker-compose -f docker/docker-compose.yml up -d"
+        )
+        sys.exit(1)
+    console.print("[green]✅ Connected to Neo4j[/green]")
+
+    # Check if Phase 1 has been completed
+    console.print("\n[cyan]Checking Phase 1 & 2 completion...[/cyan]")
+    db_info = connection.get_database_info()
+
+    if not db_info or db_info.get("total_nodes", 0) == 0:
+        console.print("[red]❌ Phase 1 must be completed first![/red]")
+        console.print("Run: python -m src.main --phase 1")
+        sys.exit(1)
+
+    console.print(f"[green]✅ Found {db_info['total_nodes']} nodes from previous phases[/green]")
+
+    # Initialize parser
+    console.print("\n[cyan]Initializing MUMPS routine parser...[/cyan]")
+    routine_parser = RoutineParser()
+
+    # Find and parse routine files
+    from pathlib import Path
+    vista_source_dir = settings.get_absolute_path(Path("Vista-M-source-code"))
+    packages_dir = vista_source_dir / "Packages"
+
+    if not packages_dir.exists():
+        console.print(f"[red]❌ Packages directory not found: {packages_dir}[/red]")
+        sys.exit(1)
+
+    # Collect all routines and labels
+    all_routines = []
+    all_labels = []
+
+    # Process each package directory
+    console.print("[cyan]Processing routine files by package...[/cyan]")
+    package_dirs = [d for d in packages_dir.iterdir() if d.is_dir()]
+
+    # Process Registration package first as a test
+    registration_dir = packages_dir / "Registration" / "Routines"
+    if registration_dir.exists():
+        console.print("[cyan]Processing Registration package routines...[/cyan]")
+        routines, labels = routine_parser.parse_directory(registration_dir, "Registration")
+        console.print(f"[green]✅ Found {len(routines)} routines with {len(labels)} labels[/green]")
+        all_routines.extend(routines)
+        all_labels.extend(labels)
+
+    # Process all other packages (optional - can be limited for testing)
+    if args.all_packages:
+        for package_dir in package_dirs:
+            if package_dir.name == "Registration":
+                continue  # Already processed
+
+            routines_dir = package_dir / "Routines"
+            if routines_dir.exists():
+                console.print(f"[cyan]Processing {package_dir.name} package...[/cyan]")
+                routines, labels = routine_parser.parse_directory(routines_dir, package_dir.name)
+                if routines:
+                    console.print(f"[dim]  Found {len(routines)} routines with {len(labels)} labels[/dim]")
+                    all_routines.extend(routines)
+                    all_labels.extend(labels)
+
+    console.print(f"\n[green]✅ Total: {len(all_routines)} routines with {len(all_labels)} labels[/green]")
+
+    # Build Phase 3 graph extensions
+    console.print("\n[cyan]Building Phase 3 graph extensions...[/cyan]")
+    builder = GraphBuilder(connection, batch_size=args.batch_size)
+
+    # Create routine nodes
+    if all_routines:
+        console.print("[cyan]Creating Routine nodes...[/cyan]")
+        routine_count = builder.create_routine_nodes(all_routines)
+        console.print(f"[green]✅ Created {routine_count} Routine nodes[/green]")
+
+    # Create label nodes
+    if all_labels:
+        console.print("[cyan]Creating Label nodes...[/cyan]")
+        label_count = builder.create_label_nodes(all_labels)
+        console.print(f"[green]✅ Created {label_count} Label nodes[/green]")
+
+    # Create relationships
+    if all_routines and all_labels:
+        console.print("[cyan]Creating CONTAINS_LABEL relationships...[/cyan]")
+        contains_count = builder.create_contains_label_relationships(all_routines, all_labels)
+        console.print(f"[green]✅ Created {contains_count} CONTAINS_LABEL relationships[/green]")
+
+    if all_routines:
+        console.print("[cyan]Creating OWNS_ROUTINE relationships...[/cyan]")
+        owns_count = builder.create_package_routine_relationships(all_routines)
+        console.print(f"[green]✅ Created {owns_count} OWNS_ROUTINE relationships[/green]")
+
+    # Validate Phase 3
+    console.print("\n[cyan]Validating Phase 3 results...[/cyan]")
+    validate_phase3(connection)
+
+    # Display summary
+    display_phase3_results(
+        len(all_routines),
+        len(all_labels),
+        contains_count if all_routines and all_labels else 0,
+        owns_count if all_routines else 0
+    )
+
+
+def validate_phase3(connection: Neo4jConnection):
+    """
+    Validate Phase 3 specific relationships and nodes.
+
+    Args:
+        connection: Neo4j connection
+    """
+    validation_queries = [
+        # Check for routines
+        {
+            "description": "Routine nodes",
+            "query": "MATCH (r:Routine) RETURN count(r) as count",
+            "expected_minimum": 1
+        },
+        # Check for labels
+        {
+            "description": "Label nodes",
+            "query": "MATCH (l:Label) RETURN count(l) as count",
+            "expected_minimum": 1
+        },
+        # Check CONTAINS_LABEL relationships
+        {
+            "description": "CONTAINS_LABEL",
+            "query": "MATCH ()-[:CONTAINS_LABEL]->() RETURN count(*) as count",
+            "expected_minimum": 1
+        },
+        # Check OWNS_ROUTINE relationships
+        {
+            "description": "OWNS_ROUTINE",
+            "query": "MATCH ()-[:OWNS_ROUTINE]->() RETURN count(*) as count",
+            "expected_minimum": 0  # May not have package matches
+        },
+        # Check for orphaned routines
+        {
+            "description": "Orphaned routines (no package)",
+            "query": "MATCH (r:Routine) WHERE NOT ((:Package)-[:OWNS_ROUTINE]->(r)) RETURN count(r) as count",
+            "expected_minimum": -1  # Just informational
+        },
+        # Check for entry points
+        {
+            "description": "Entry point labels",
+            "query": "MATCH (l:Label {is_entry_point: true}) RETURN count(l) as count",
+            "expected_minimum": 0
+        },
+        # Check for functions
+        {
+            "description": "Function labels",
+            "query": "MATCH (l:Label {is_function: true}) RETURN count(l) as count",
+            "expected_minimum": 0
+        }
+    ]
+
+    results = []
+    for check in validation_queries:
+        try:
+            result = connection.execute_query(check["query"])
+            if result:
+                count = result[0]["count"]
+                status = "INFO" if check["expected_minimum"] < 0 else (
+                    "PASS" if count >= check["expected_minimum"] else "WARN"
+                )
+                results.append({
+                    "entity_type": check["description"],
+                    "expected_minimum": check["expected_minimum"] if check["expected_minimum"] >= 0 else "N/A",
+                    "actual_count": count,
+                    "status": status
+                })
+        except Exception as e:
+            logging.error(f"Validation query failed: {e}")
+
+    if results:
+        # Create validation table
+        table = Table(title="Phase 3 Validation", show_header=True)
+        table.add_column("Entity Type", style="cyan")
+        table.add_column("Expected Min", justify="right")
+        table.add_column("Actual Count", justify="right")
+        table.add_column("Status", justify="center")
+
+        for result in results:
+            status_color = "green" if result["status"] == "PASS" else (
+                "yellow" if result["status"] == "WARN" else "dim"
+            )
+            table.add_row(
+                result["entity_type"],
+                str(result["expected_minimum"]),
+                str(result["actual_count"]),
+                f"[{status_color}]{result['status']}[/{status_color}]"
+            )
+
+        console.print(table)
+
+
+def display_phase3_results(routines: int, labels: int, contains: int, owns: int):
+    """
+    Display Phase 3 execution results.
+
+    Args:
+        routines: Number of routine nodes created
+        labels: Number of label nodes created
+        contains: Number of CONTAINS_LABEL relationships created
+        owns: Number of OWNS_ROUTINE relationships created
+    """
+    table = Table(title="Phase 3 Results", show_header=True)
+    table.add_column("Entity Type", style="cyan")
+    table.add_column("Count", justify="right", style="green")
+
+    table.add_row("Routine nodes", str(routines))
+    table.add_row("Label nodes", str(labels))
+    table.add_row("CONTAINS_LABEL relationships", str(contains))
+    table.add_row("OWNS_ROUTINE relationships", str(owns))
+    table.add_row("", "")
+    table.add_row(
+        "[bold]Total new entities[/bold]",
+        f"[bold]{routines + labels + contains + owns}[/bold]"
+    )
+
+    console.print("\n")
+    console.print(table)
+
+
 def validate_graph(connection: Neo4jConnection):
     """
     Validate the created graph.
@@ -533,6 +797,8 @@ def main():
             phase1_pipeline(args)
         elif args.phase == 2:
             phase2_pipeline(args)
+        elif args.phase == 3:
+            phase3_pipeline(args)
         else:
             console.print(f"[red]Phase {args.phase} not implemented yet![/red]")
             sys.exit(1)

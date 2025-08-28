@@ -9,24 +9,35 @@ This project transforms VistA's complex hierarchical data structures into a quer
 - Cross-reference analysis
 - Subfile hierarchy mapping
 - Package dependency tracking
-- Future: MUMPS code flow analysis
+- MUMPS routine and label code structure analysis
+- Code flow and call graph analysis
 
 ## 📊 What Gets Loaded
 
-The graph database contains:
+The graph database contains (after all phases):
 
-### Nodes (117,590 total)
+### Phase 1 & 2 - Data Dictionary Structure
+**Nodes (117,590 total)**
 - **195 Packages** - VistA application modules
 - **7,939 Files** - Data dictionary file definitions  
 - **95,955 Fields** - Individual field definitions
 - **13,501 CrossReferences** - Index definitions
 
-### Relationships (126,207 total)
+**Relationships (126,207 total)**
 - **CONTAINS_FILE** (2,790) - Package ownership of files
 - **CONTAINS_FIELD** (95,955) - File-to-field relationships
 - **POINTS_TO** (8,376) - Pointer field references
 - **INDEXED_BY** (13,501) - Field cross-reference indexes
 - **SUBFILE_OF** (5,585) - Hierarchical subfile relationships
+
+### Phase 3 - Code Structure
+**Additional Nodes (336,649 total)**
+- **33,951 Routines** - MUMPS routine files
+- **302,698 Labels** - Entry points, functions, and subroutines
+
+**Additional Relationships (308,974 total)**
+- **CONTAINS_LABEL** (302,698) - Routine-to-label relationships
+- **OWNS_ROUTINE** (6,276) - Package-to-routine relationships
 
 ## 🚀 Complete Loading Process
 
@@ -64,19 +75,28 @@ curl -f http://localhost:7474 || echo "Neo4j not ready yet"
 
 Neo4j will be accessible at http://localhost:7474 with credentials neo4j/password
 
-#### 3. Load the Complete Graph
+#### 3. Configure Environment
 
 ```bash
-# IMPORTANT: Always start with a clean database to avoid duplicates
-# Clear any existing data
-uv run python -c "
-from neo4j import GraphDatabase
-driver = GraphDatabase.driver('bolt://localhost:7687', auth=('neo4j', 'password'))
-driver.session().run('MATCH (n) DETACH DELETE n')
-print('Database cleared')
-driver.close()
-"
+# Copy the example environment file
+cp .env.example .env
 
+# Edit .env if needed (default settings should work)
+# Default Neo4j port is 7688 to avoid conflicts
+```
+
+#### 4. Database Management
+
+**Clean/Reset Database:**
+```bash
+# Use the cleanup script for safe database clearing
+uv run python cleanup_database.py
+# This will prompt for confirmation before deleting all data
+```
+
+#### 5. Load the Complete Graph
+
+```bash
 # Phase 1: Load basic structure (2-3 minutes)
 # Creates: Package, File, Field nodes
 # Creates: CONTAINS_FILE, CONTAINS_FIELD, POINTS_TO relationships
@@ -86,9 +106,21 @@ uv run python -m src.main --phase 1
 # Creates: CrossReference nodes
 # Creates: INDEXED_BY, SUBFILE_OF relationships
 uv run python -m src.main --phase 2
+
+# OPTIONAL - Phase 3: Load code structure (requires VistA-M source code)
+# First, create indexes for optimal performance
+uv run python create_phase3_indexes.py
+
+# Then load all MUMPS routines and labels (~30 seconds with indexes)
+# Creates: Routine and Label nodes
+# Creates: CONTAINS_LABEL and OWNS_ROUTINE relationships
+uv run python -m src.main --phase 3 --all-packages
+
+# Or load just Registration package for testing (~2 seconds)
+uv run python -m src.main --phase 3
 ```
 
-#### 4. Verify the Load
+#### 6. Verify the Load
 
 Open Neo4j Browser at http://localhost:7474 and run:
 
@@ -97,11 +129,15 @@ Open Neo4j Browser at http://localhost:7474 and run:
 MATCH (n) RETURN labels(n)[0] as Type, count(n) as Count
 ORDER BY Count DESC
 
-// Should return:
-// Field         95,955
-// CrossReference 13,501
-// File           7,939
-// Package          195
+// Should return (Phases 1-2):
+// Field           95,955
+// CrossReference  13,501
+// File             7,939
+// Package            195
+
+// With Phase 3 adds:
+// Label          302,698
+// Routine         33,951
 ```
 
 ```cypher
@@ -110,12 +146,16 @@ MATCH ()-[r]->()
 RETURN type(r) as Relationship, count(r) as Count
 ORDER BY Count DESC
 
-// Should return:
-// CONTAINS_FIELD  95,955
-// INDEXED_BY      13,501
-// POINTS_TO        8,376
-// SUBFILE_OF       5,585
-// CONTAINS_FILE    2,790
+// Should return (Phases 1-2):
+// CONTAINS_FIELD   95,955
+// INDEXED_BY       13,501
+// POINTS_TO         8,376
+// SUBFILE_OF        5,585
+// CONTAINS_FILE     2,790
+
+// With Phase 3 adds:
+// CONTAINS_LABEL  302,698
+// OWNS_ROUTINE      6,276
 ```
 
 ### Complete Reload Process
@@ -123,18 +163,22 @@ ORDER BY Count DESC
 If you need to reload the data (e.g., after updates to source files):
 
 ```bash
-# Single command to clear and reload everything
-uv run python -c "
-from neo4j import GraphDatabase
-driver = GraphDatabase.driver('bolt://localhost:7687', auth=('neo4j', 'password'))
-driver.session().run('MATCH (n) DETACH DELETE n')
-driver.close()
-print('Database cleared')
-" && \
+# Quick reload for Phases 1-2 only
+uv run python cleanup_database.py && \
 uv run python -m src.main --phase 1 && \
 uv run python -m src.main --phase 2
-
 # Total time: ~5 minutes
+
+# Full reload including all code structure (Phases 1-3)
+uv run python cleanup_database.py && \
+uv run python -m src.main --phase 1 && \
+uv run python -m src.main --phase 2 && \
+uv run python create_phase3_indexes.py && \
+uv run python -m src.main --phase 3 --all-packages
+# Total time: ~6 minutes with indexes
+
+# Validate the complete load
+uv run python validate_phase3_graph.py
 ```
 
 ## 🔍 Exploring the Graph

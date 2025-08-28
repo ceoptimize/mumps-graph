@@ -12,7 +12,9 @@ from src.models.nodes import (
     CrossReferenceNode,
     FieldNode,
     FileNode,
+    LabelNode,
     PackageNode,
+    RoutineNode,
     SubfileNode,
 )
 from src.models.relationships import (
@@ -567,7 +569,7 @@ class GraphBuilder:
                         count += created_count
                         logger.debug(f"Created {created_count} INDEXED_BY relationships in this batch")
                     else:
-                        logger.warning(f"No INDEXED_BY relationships created in this batch")
+                        logger.warning("No INDEXED_BY relationships created in this batch")
                     progress.advance(task, len(batch))
                 except Exception as e:
                     logger.error(f"Failed to create INDEXED_BY relationships: {e}")
@@ -632,7 +634,7 @@ class GraphBuilder:
                     count += created_count
                     logger.debug(f"Created {created_count} SUBFILE_OF relationships in this batch")
                 else:
-                    logger.warning(f"No SUBFILE_OF relationships created in this batch")
+                    logger.warning("No SUBFILE_OF relationships created in this batch")
             except Exception as e:
                 logger.error(f"Failed to create SUBFILE_OF relationships: {e}")
 
@@ -715,7 +717,7 @@ class GraphBuilder:
                     count += created_count
                     logger.debug(f"Created {created_count} VARIABLE_POINTER relationships in this batch")
                 else:
-                    logger.warning(f"No VARIABLE_POINTER relationships created in this batch")
+                    logger.warning("No VARIABLE_POINTER relationships created in this batch")
             except Exception as e:
                 logger.error(f"Failed to create VARIABLE_POINTER relationships: {e}")
 
@@ -733,3 +735,255 @@ class GraphBuilder:
         # by querying additional DD entries and updating existing relationships
         logger.info("Pointer relationship enhancement - future enhancement")
         return 0
+
+    # Phase 3: Routine and Label Node Methods
+
+    def create_routine_nodes(self, routines: List[RoutineNode]) -> int:
+        """
+        Create routine nodes in batches.
+
+        Args:
+            routines: List of RoutineNode objects
+
+        Returns:
+            Number of routines created
+        """
+        if not routines:
+            return 0
+
+        count = 0
+        # Use MERGE to prevent duplicates based on routine name
+        query = """
+        UNWIND $batch as routine
+        MERGE (r:Routine {name: routine.name})
+        ON CREATE SET
+            r.routine_id = routine.routine_id,
+            r.package_name = routine.package_name,
+            r.prefix = routine.prefix,
+            r.path = routine.path,
+            r.lines_of_code = routine.lines_of_code,
+            r.last_modified = routine.last_modified,
+            r.version = routine.version,
+            r.patches = routine.patches,
+            r.description = routine.description
+        ON MATCH SET
+            r.lines_of_code = routine.lines_of_code,
+            r.last_modified = routine.last_modified,
+            r.path = routine.path
+        RETURN count(r) as count
+        """
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task(
+                f"[cyan]Creating {len(routines)} routine nodes...",
+                total=len(routines),
+            )
+
+            for batch in chunks(routines, self.batch_size):
+                batch_data = [routine.dict_for_neo4j() for routine in batch]
+
+                try:
+                    result = self.connection.execute_query(
+                        query, {"batch": batch_data}
+                    )
+                    if result:
+                        count += len(batch)
+                    progress.advance(task, len(batch))
+                except Exception as e:
+                    logger.error(f"Failed to create routine batch: {e}")
+
+        logger.info(f"Created {count} routine nodes")
+        return count
+
+    def create_label_nodes(self, labels: List[LabelNode]) -> int:
+        """
+        Create label nodes in batches.
+
+        Args:
+            labels: List of LabelNode objects
+
+        Returns:
+            Number of labels created
+        """
+        if not labels:
+            return 0
+
+        count = 0
+        # Use MERGE to prevent duplicates based on routine_name + label name
+        query = """
+        UNWIND $batch as label
+        MERGE (l:Label {routine_name: label.routine_name, name: label.name})
+        ON CREATE SET
+            l.label_id = label.label_id,
+            l.line_number = label.line_number,
+            l.is_entry_point = label.is_entry_point,
+            l.is_function = label.is_function,
+            l.parameters = label.parameters,
+            l.comment = label.comment
+        ON MATCH SET
+            l.line_number = label.line_number,
+            l.comment = label.comment
+        RETURN count(l) as count
+        """
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task(
+                f"[cyan]Creating {len(labels)} label nodes...",
+                total=len(labels),
+            )
+
+            for batch in chunks(labels, self.batch_size):
+                batch_data = [label.dict_for_neo4j() for label in batch]
+
+                try:
+                    result = self.connection.execute_query(
+                        query, {"batch": batch_data}
+                    )
+                    if result:
+                        count += len(batch)
+                    progress.advance(task, len(batch))
+                except Exception as e:
+                    logger.error(f"Failed to create label batch: {e}")
+
+        logger.info(f"Created {count} label nodes")
+        return count
+
+    def create_contains_label_relationships(
+        self, routines: List[RoutineNode], labels: List[LabelNode]
+    ) -> int:
+        """
+        Create CONTAINS_LABEL relationships between routines and their labels.
+
+        Args:
+            routines: List of RoutineNode objects
+            labels: List of LabelNode objects
+
+        Returns:
+            Number of relationships created
+        """
+        if not routines or not labels:
+            return 0
+
+        # Group labels by routine
+        labels_by_routine = {}
+        for label in labels:
+            if label.routine_name not in labels_by_routine:
+                labels_by_routine[label.routine_name] = []
+            labels_by_routine[label.routine_name].append(label)
+
+        # Build relationships data
+        relationships = []
+        for routine in routines:
+            if routine.name in labels_by_routine:
+                for label in labels_by_routine[routine.name]:
+                    relationships.append({
+                        "routine_name": routine.name,
+                        "label_name": label.name,
+                        "line_number": label.line_number
+                    })
+
+        if not relationships:
+            return 0
+
+        count = 0
+        query = """
+        UNWIND $batch as rel
+        MATCH (r:Routine {name: rel.routine_name})
+        MATCH (l:Label {routine_name: rel.routine_name, name: rel.label_name})
+        MERGE (r)-[:CONTAINS_LABEL {line_number: rel.line_number}]->(l)
+        RETURN count(*) as count
+        """
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task(
+                f"[cyan]Creating {len(relationships)} routine-label relationships...",
+                total=len(relationships),
+            )
+
+            for batch in chunks(relationships, self.batch_size):
+                try:
+                    result = self.connection.execute_query(
+                        query, {"batch": batch}
+                    )
+                    if result and len(result) > 0:
+                        batch_count = result[0].get("count", 0)
+                        count += batch_count
+                    progress.advance(task, len(batch))
+                except Exception as e:
+                    logger.error(f"Failed to create CONTAINS_LABEL relationships: {e}")
+
+        logger.info(f"Created {count} CONTAINS_LABEL relationships")
+        return count
+
+    def create_package_routine_relationships(self, routines: List[RoutineNode]) -> int:
+        """
+        Create OWNS_ROUTINE relationships between packages and routines.
+
+        Args:
+            routines: List of RoutineNode objects
+
+        Returns:
+            Number of relationships created
+        """
+        if not routines:
+            return 0
+
+        # Prepare routine data with prefixes
+        routine_data = []
+        for r in routines:
+            if r.prefix:  # Only create relationships if we have a prefix
+                routine_data.append({
+                    "name": r.name,
+                    "prefix": r.prefix
+                })
+
+        if not routine_data:
+            return 0
+
+        count = 0
+        # Match packages by prefix and create relationships
+        query = """
+        UNWIND $routines as routine
+        MATCH (p:Package)
+        WHERE routine.prefix IN p.prefixes
+        MATCH (r:Routine {name: routine.name})
+        MERGE (p)-[:OWNS_ROUTINE]->(r)
+        RETURN count(*) as count
+        """
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task(
+                "[cyan]Creating package-routine relationships...",
+                total=len(routine_data),
+            )
+
+            for batch in chunks(routine_data, self.batch_size):
+                try:
+                    result = self.connection.execute_query(
+                        query, {"routines": batch}
+                    )
+                    if result and len(result) > 0:
+                        batch_count = result[0].get("count", 0)
+                        count += batch_count
+                    progress.advance(task, len(batch))
+                except Exception as e:
+                    logger.error(f"Failed to create OWNS_ROUTINE relationships: {e}")
+
+        logger.info(f"Created {count} OWNS_ROUTINE relationships")
+        return count

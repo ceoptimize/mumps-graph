@@ -188,3 +188,59 @@ class SubfileNode(FileNode):
             }
         )
         return base_dict
+
+
+class RoutineNode(BaseModel):
+    """MUMPS routine file representation."""
+
+    routine_id: str = Field(default_factory=lambda: str(uuid4()))
+    name: str  # e.g., "DG10"
+    package_name: Optional[str] = None  # e.g., "Registration"
+    prefix: Optional[str] = None  # e.g., "DG"
+    path: str  # Full file path
+    lines_of_code: int = 0
+    last_modified: Optional[str] = None
+    version: Optional[str] = None
+    patches: List[str] = Field(default_factory=list)  # Extracted from header
+    description: Optional[str] = None  # From header comments
+
+    def dict_for_neo4j(self) -> Dict[str, Any]:
+        """Convert to dict for Neo4j node creation."""
+        return {
+            "routine_id": self.routine_id,
+            "name": self.name,
+            "package_name": self.package_name,
+            "prefix": self.prefix,
+            "path": self.path,
+            "lines_of_code": self.lines_of_code,
+            "last_modified": self.last_modified,
+            "version": self.version,
+            "patches": self.patches,
+            "description": self.description,
+        }
+
+
+class LabelNode(BaseModel):
+    """Label/entry point within a MUMPS routine."""
+
+    label_id: str = Field(default_factory=lambda: str(uuid4()))
+    name: str  # e.g., "PROCESS"
+    routine_name: str  # Parent routine
+    line_number: int
+    is_entry_point: bool = False  # Called from other routines
+    is_function: bool = False  # Returns value (QUIT with value)
+    parameters: List[str] = Field(default_factory=list)  # If determinable
+    comment: Optional[str] = None  # Adjacent comment
+
+    def dict_for_neo4j(self) -> Dict[str, Any]:
+        """Convert to dict for Neo4j node creation."""
+        return {
+            "label_id": self.label_id,
+            "name": self.name,
+            "routine_name": self.routine_name,
+            "line_number": self.line_number,
+            "is_entry_point": self.is_entry_point,
+            "is_function": self.is_function,
+            "parameters": self.parameters,
+            "comment": self.comment,
+        }
