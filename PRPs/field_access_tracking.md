@@ -1,12 +1,16 @@
-name: "Field-Level Reference Tracking for VistA MUMPS - Enhanced Impact Analysis"
+name: "Field-Level Reference Tracking for VistA MUMPS - Phase 4 Enhancement"
 description: |
-  Implement field-level reference tracking to enable precise impact analysis when FileMan fields are modified, 
-  allowing developers to identify exactly which routines access specific fields rather than just globals.
+  Enhance Phase 4 of the VistA graph database pipeline to implement field-level reference tracking, 
+  enabling precise impact analysis when FileMan fields are modified by identifying exactly which 
+  routines access specific fields rather than just globals.
 
 ---
 
+## Integration Strategy
+**This feature will be integrated into Phase 4** of the existing pipeline, enhancing the current global access tracking with field-level granularity. When running `python -m src.main --phase 4`, the system will automatically extract both global-level and field-level access patterns in a single pass through the code.
+
 ## Goal
-Implement field-level reference tracking that creates direct relationships between MUMPS code elements (Labels/Routines) and FileMan fields, enabling precise impact analysis when fields are modified. The system will parse global references to identify specific field access patterns and create ACCESSES_FIELD relationships in the Neo4j graph database.
+Enhance Phase 4's code relationship extraction to create direct relationships between MUMPS code elements (Labels/Routines) and FileMan fields, enabling precise impact analysis when fields are modified. The system will parse global references to identify specific field access patterns and create ACCESSES_FIELD relationships alongside existing ACCESSES relationships in the Neo4j graph database.
 
 ## Why
 - **Impact Analysis**: Immediately identify affected code when planning field changes (target: 80% reduction in analysis time)
@@ -16,7 +20,7 @@ Implement field-level reference tracking that creates direct relationships betwe
 - **Compliance**: Track access to sensitive fields (SSN, DOB, etc.) for security auditing
 
 ## What
-Enhance the existing global access parsing to extract field-level information from MUMPS patterns and create precise field-level relationships in the graph database.
+Enhance Phase 4's existing global access parsing (`extract_accesses_from_routine`) to simultaneously extract field-level information from MUMPS patterns and create precise field-level relationships in the graph database. This will run automatically as part of the standard Phase 4 execution.
 
 ### Success Criteria
 - [ ] Parse $PIECE operations to identify specific field access (e.g., `$P(^DPT(DFN,0),"^",1)` → field .01)
@@ -154,11 +158,11 @@ class AccessesFieldRel(Relationship):
         )
 ```
 
-### List of Tasks to Complete
-Create a new archon project called Vista Graph Database Field Access and track all tasks there. 
+### List of Tasks to Complete (Phase 4 Integration)
+All tasks should be tracked as enhancements to Phase 4 and tracked in Archon under the project VistA Graph Phase 4 - Code Relationships (which already exists in Archon). These modifications will ensure field-level tracking runs automatically when executing `python -m src.main --phase 4`.
 
 ```yaml
-Task 1: Add ACCESSES_FIELD relationship type
+Task 1: Add ACCESSES_FIELD relationship type to Phase 4
 MODIFY src/models/relationships.py:
   - FIND pattern: "class RelationshipType(Enum)"
   - ADD after last relationship type: ACCESSES_FIELD = "ACCESSES_FIELD"
@@ -170,9 +174,10 @@ CREATE src/parsers/field_mapper.py:
   - CREATE FieldMapper class with methods to map global patterns to fields
   - IMPLEMENT piece-to-field mapping logic
 
-Task 3: Enhance code extractor with field-level parsing
+Task 3: Enhance Phase 4 code extractor with field-level parsing
 MODIFY src/parsers/code_extractor.py:
   - ADD new method: extract_field_accesses_from_routine
+  - CALL this method within the existing Phase 4 extraction loop
   - ENHANCE existing GLOBAL_ACCESS_PATTERN regex to capture full context
   - ADD $PIECE parsing logic to identify specific fields
 
@@ -188,11 +193,13 @@ MODIFY src/graph/builder.py:
   - FOLLOW pattern from create_accesses_relationships
   - BATCH process for efficiency
 
-Task 6: Integrate into main pipeline
+Task 6: Integrate field tracking into Phase 4 main loop
 MODIFY src/main.py:
-  - ADD call to extract_field_accesses_from_routine in Phase 4
-  - ADD call to create_field_access_relationships
-  - ADD statistics reporting for field accesses
+  - FIND the Phase 4 section (around line 230)
+  - ADD call to extract_field_accesses_from_routine right after extract_accesses_from_routine
+  - ADD call to create_field_access_relationships after create_accesses_relationships
+  - ADD statistics reporting for field accesses to Phase 4 summary
+  - ENSURE field tracking runs automatically with Phase 4 (no separate flag needed)
 
 Task 7: Create field usage report generator
 CREATE src/reports/field_usage_report.py:
@@ -211,6 +218,30 @@ CREATE tests/test_field_access_extraction.py:
 ### Per Task Implementation Details
 
 ```python
+# Task 6: Integration into main.py Phase 4 section
+# This shows exactly where to add the field tracking in the existing Phase 4 loop
+
+# In src/main.py, around line 230 in the Phase 4 section:
+# Find this existing code:
+for routine_file in routine_files:
+    # Extract ACCESSES (existing)
+    accesses, orphan_acc = extractor.extract_accesses_from_routine(routine_file)
+    all_accesses.extend(accesses)
+    all_orphan_accesses.extend(orphan_acc)
+    
+    # ADD THIS RIGHT AFTER THE ABOVE:
+    # Extract FIELD ACCESSES (new)
+    field_accesses, orphan_field_acc = extractor.extract_field_accesses_from_routine(routine_file)
+    all_field_accesses.extend(field_accesses)
+    all_orphan_field_accesses.extend(orphan_field_acc)
+
+# Later in the relationship creation section:
+# After creating ACCESSES relationships, ADD:
+if all_field_accesses:
+    console.print(f"[cyan]Creating {len(all_field_accesses)} ACCESSES_FIELD relationships...[/cyan]")
+    field_access_count = builder.create_field_access_relationships(all_field_accesses)
+    console.print(f"[green]✅ Created {field_access_count} ACCESSES_FIELD relationships[/green]")
+
 # Task 2: Field Mapper Implementation
 class FieldMapper:
     def __init__(self, node_cache: NodeLookupCache):
@@ -362,12 +393,12 @@ def test_cross_reference_pattern():
 uv run pytest tests/test_field_access_extraction.py -v
 ```
 
-### Level 3: Integration Test
+### Level 3: Integration Test (Phase 4)
 ```bash
-# Process a sample routine with known field accesses
+# Process a sample routine with Phase 4 - field tracking is now automatic
 uv run python -m src.main --phase 4 --test-routine DG10
 
-# Verify in Neo4j
+# Verify in Neo4j - should see both ACCESSES and ACCESSES_FIELD relationships
 echo 'MATCH (l:Label)-[r:ACCESSES_FIELD]->(f:Field) 
 WHERE l.routine_name = "DG10" 
 RETURN l.name, f.number, f.name, r.access_type, r.piece_number 
@@ -376,9 +407,10 @@ LIMIT 10' | cypher-shell
 # Expected: See field relationships with correct piece numbers
 ```
 
-### Level 4: Full Pipeline Test
+### Level 4: Full Phase 4 Pipeline Test
 ```bash
-# Run complete extraction on Registration package
+# Run complete Phase 4 extraction on Registration package
+# Field-level tracking is now included automatically
 uv run python -m src.main --phase 4 --package Registration
 
 # Generate field usage report
@@ -397,11 +429,12 @@ uv run python -m src.reports.field_usage_report --package Registration
 - [ ] All tests pass: `uv run pytest tests/ -v`
 - [ ] No linting errors: `uv run ruff check src/`
 - [ ] No type errors: `uv run mypy src/`
-- [ ] Sample routine processing successful
+- [ ] Phase 4 runs successfully with field tracking: `uv run python -m src.main --phase 4`
+- [ ] Both ACCESSES and ACCESSES_FIELD relationships created in single pass
 - [ ] Field relationships visible in Neo4j browser
 - [ ] Access types (READ/WRITE) correctly identified
 - [ ] Piece numbers correctly mapped to field numbers
-- [ ] Performance acceptable (<5 min for 1000 routines)
+- [ ] Performance acceptable (minimal overhead vs original Phase 4)
 - [ ] Field usage report generates correctly
 
 ## Anti-Patterns to Avoid
@@ -437,14 +470,16 @@ uv run python -m src.reports.field_usage_report --package Registration
 
 ---
 
-**Confidence Score: 8.5/10**
+**Confidence Score: 9/10**
 
-This PRP provides comprehensive context for implementing field-level reference tracking. The score reflects:
-- ✅ Strong understanding of existing codebase structure
-- ✅ Clear implementation path with specific code examples  
-- ✅ Detailed validation steps and test cases
+This PRP provides comprehensive context for implementing field-level reference tracking as a Phase 4 enhancement. The updated score reflects:
+- ✅ Clear integration into existing Phase 4 pipeline
+- ✅ No separate execution needed - runs automatically with Phase 4
+- ✅ Minimal changes required to existing codebase
+- ✅ Strong understanding of existing code structure and patterns
+- ✅ Detailed implementation path with specific integration points
+- ✅ Comprehensive validation steps and test cases
 - ✅ Addresses known MUMPS/FileMan quirks
 - ⚠️ May need additional DD parsing logic for complex field mappings
-- ⚠️ Cross-reference handling might need refinement based on actual data
 
-The implementation should succeed in one pass with potential minor adjustments for edge cases in field mapping logic.
+The implementation should succeed in one pass as it leverages the existing Phase 4 infrastructure, requiring only additive changes rather than architectural modifications. Field-level tracking will run automatically whenever Phase 4 is executed.
