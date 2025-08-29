@@ -69,9 +69,9 @@ class TestGraphBuilder:
         builder = GraphBuilder(mock_neo4j_connection, batch_size=2)
 
         files = [
-            FileNode(number="2", name="PATIENT", global_root="^DPT"),
-            FileNode(number="200", name="NEW PERSON", global_root="^VA(200,"),
-            FileNode(number="120", name="GMRA", global_root="^GMRA"),
+            FileNode(file_number="2", name="PATIENT", global_root="^DPT"),
+            FileNode(file_number="200", name="NEW PERSON", global_root="^VA(200,"),
+            FileNode(file_number="120", name="GMRA", global_root="^GMRA"),
         ]
 
         mock_neo4j_connection.execute_query.return_value = [{"created": 2}]
@@ -103,8 +103,8 @@ class TestGraphBuilder:
         builder = GraphBuilder(mock_neo4j_connection, batch_size=2)
 
         files = {
-            "2": FileNode(file_id="file-1", number="2", name="PATIENT"),
-            "200": FileNode(file_id="file-2", number="200", name="NEW PERSON"),
+            "2": FileNode(file_id="file-1", file_number="2", name="PATIENT"),
+            "200": FileNode(file_id="file-2", file_number="200", name="NEW PERSON"),
         }
 
         fields = [
@@ -125,8 +125,8 @@ class TestGraphBuilder:
         builder = GraphBuilder(mock_neo4j_connection)
 
         files = {
-            "2": FileNode(file_id="file-1", number="2", name="PATIENT"),
-            "200": FileNode(file_id="file-2", number="200", name="NEW PERSON"),
+            "2": FileNode(file_id="file-1", file_number="2", name="PATIENT"),
+            "200": FileNode(file_id="file-2", file_number="200", name="NEW PERSON"),
         }
 
         fields = [
@@ -180,8 +180,8 @@ class TestGraphBuilder:
         ]
 
         files = {
-            "1": FileNode(file_id="file-1", number="1", name="FILE"),
-            "2": FileNode(file_id="file-2", number="2", name="PATIENT"),
+            "1": FileNode(file_id="file-1", file_number="1", name="FILE"),
+            "2": FileNode(file_id="file-2", file_number="2", name="PATIENT"),
         }
 
         # Mock package mapper

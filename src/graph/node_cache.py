@@ -119,7 +119,7 @@ class NodeLookupCache:
         """Load all File nodes with global roots into cache."""
         query = """
         MATCH (f:File) 
-        RETURN f.file_id as id, f.number as num, f.global_root as root
+        RETURN f.file_id as id, f.file_number as num, f.global_root as root
         """
         try:
             files = self.connection.execute_query(query)

@@ -69,7 +69,7 @@ class GraphBuilder:
             "CREATE INDEX package_name IF NOT EXISTS FOR (p:Package) ON (p.name)",
             "CREATE INDEX package_id IF NOT EXISTS FOR (p:Package) ON (p.package_id)",
             # File indexes
-            "CREATE INDEX file_number IF NOT EXISTS FOR (f:File) ON (f.number)",
+            "CREATE INDEX file_number IF NOT EXISTS FOR (f:File) ON (f.file_number)",
             "CREATE INDEX file_id IF NOT EXISTS FOR (f:File) ON (f.file_id)",
             "CREATE INDEX file_name IF NOT EXISTS FOR (f:File) ON (f.name)",
             # Field indexes

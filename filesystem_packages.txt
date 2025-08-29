@@ -1,0 +1,140 @@
+Accounts Receivable
+Adverse Reaction Tracking
+Albany OIFO
+Asists
+Authorization Subscription
+Auto Replenishment Ward Stock
+Automated Information Collection System
+Automated Lab Instruments
+Automated Medical Information Exchange
+Barcode Medication Administration
+Beneficiary Travel
+CMOP
+CPT HCPCS Codes
+Capacity Management - RUM
+Capacity Management Tools
+Care Management
+Clinical Case Registries
+Clinical Information Resource Network
+Clinical Monitoring System
+Clinical Procedures
+Clinical Reminders
+Consult Request Tracking
+Controlled Substances
+DRG Grouper
+DSS Extracts
+Dental
+Dietetics
+Drug Accountability
+E Claims Management Engine
+EEO Complaint Tracking
+Electronic Signature
+Emergency Department Integration Software
+Engineering
+Enrollment Application System
+Enterprise Health Management Platform
+Enterprise Support Solution
+Enterprise Terminology Services
+Equipment Turn-In Request
+Event Capture
+Event Driven Reporting
+Fee Basis
+Foundations
+Functional Independence
+General Medical Record - Generator
+General Medical Record - IO
+General Medical Record - Vitals
+Generic Code Sheet
+Graphics
+HINQ
+Health Data and Informatics
+Health Level Seven
+Health Summary
+HealtheVet Desktop
+Hospital Based Home Care
+IFCAP
+Imaging
+Incident Reporting
+Income Verification Match
+Incomplete Records Tracking
+Inpatient Medications
+Integrated Billing
+Integrated Patient Fund
+Interim Management Support
+Kernel
+Lab Service
+Lexicon Utility
+Library
+List Manager
+M XML Parser
+MASH Utilities
+MailMan
+Master Patient Index VistA
+Medicine
+Mental Health
+Methicillin Resistant Staph Aurerus Initiative Reports
+Mobile Scheduling Applications Suite
+My HealtheVet
+NDBI
+National Drug File
+National Health Information Network
+National Laboratory Test
+National Online Information Sharing
+National VistA Support
+Network Health Exchange
+Nursing Service
+ODS
+Occurrence Screen
+Oncology
+Order Entry Results Reporting
+Outpatient Pharmacy
+PAID
+PCE Patient Care Encounter
+Patient Assessment Documentation
+Patient Data Exchange
+Patient Representative
+Pharmacy Benefits Management
+Pharmacy Data Management
+Pharmacy Prescription Practice
+Police and Security
+Problem List
+Prosthetics
+Quality Assurance Integration
+Quasar
+RPC Broker
+Radiology Nuclear Medicine
+Real Time Location System
+Record Tracking
+Registration
+Remote Order Entry System
+Run Time Library
+SAGG Project
+Salt Lake OIFO
+Scheduling
+Shift Handoff Tool
+Social Work
+Spinal Cord Dysfunction
+Surgery
+Survey Generator
+Text Integration Utility
+Toolkit
+Uncategorized
+Utilization Management Rollup
+VA FileMan
+VA Point of Service
+VBECS
+VDEF
+VISN 20
+VPE Shell
+Vendor - Audiofax Inc
+Virtual Patient Record
+VistA Integration Adapter
+VistA System Monitor
+VistA Web
+VistALink
+VistALink Security
+Visual Impairment Service Team
+Voluntary Timekeeping
+Web Services Client
+Womens Health
+Wounded Injured and Ill Warriors

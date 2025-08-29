@@ -66,10 +66,10 @@ class TestPhase2Parser:
 
         # Create parent and subfile
         files = {
-            "2": FileNode(number="2", name="PATIENT"),
-            "2.01": FileNode(number="2.01", name="ALIAS"),
-            "2.02": FileNode(number="2.02", name="RACE"),
-            "3": FileNode(number="3", name="VISIT"),
+            "2": FileNode(file_number="2", name="PATIENT"),
+            "2.01": FileNode(file_number="2.01", name="ALIAS"),
+            "2.02": FileNode(file_number="2.02", name="RACE"),
+            "3": FileNode(file_number="3", name="VISIT"),
         }
 
         subfiles = parser.extract_subfiles(files)
@@ -91,9 +91,9 @@ class TestPhase2Parser:
         parser = ZWRParser()
 
         files = {
-            "2": FileNode(number="2", name="PATIENT"),
-            "2.01": FileNode(number="2.01", name="ALIAS"),
-            "2.011": FileNode(number="2.011", name="ALIAS_COMMENT"),
+            "2": FileNode(file_number="2", name="PATIENT"),
+            "2.01": FileNode(file_number="2.01", name="ALIAS"),
+            "2.011": FileNode(file_number="2.011", name="ALIAS_COMMENT"),
         }
 
         subfiles = parser.extract_subfiles(files)

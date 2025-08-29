@@ -152,13 +152,13 @@ class TestPhase2Builder:
         # Create parent and subfile
         parent = FileNode(
             file_id="file1",
-            number="2",
+            file_number="2",
             name="PATIENT",
         )
 
         subfile = SubfileNode(
             file_id="file2",
-            number="2.01",
+            file_number="2.01",
             name="ALIAS",
             parent_file_number="2",
             parent_field_number=".01",
@@ -181,14 +181,14 @@ class TestPhase2Builder:
 
         subfile = SubfileNode(
             file_id="file2",
-            number="2.01",
+            file_number="2.01",
             name="ALIAS",
             parent_file_number="99",  # Parent does not exist
             parent_field_number=".01",
             nesting_level=1,
         )
 
-        files = {"2": FileNode(file_id="file1", number="2", name="PATIENT")}
+        files = {"2": FileNode(file_id="file1", file_number="2", name="PATIENT")}
         subfiles = {"2.01": subfile}
 
         count = builder.create_subfile_relationships(subfiles, files)
@@ -221,8 +221,8 @@ class TestPhase2Builder:
         )
 
         # Create target files
-        file1 = FileNode(file_id="file200", number="200", name="NEW PERSON")
-        file2 = FileNode(file_id="file4", number="4", name="INSTITUTION")
+        file1 = FileNode(file_id="file200", file_number="200", name="NEW PERSON")
+        file2 = FileNode(file_id="file4", file_number="4", name="INSTITUTION")
 
         # V-pointer targets
         v_pointers = {
@@ -276,7 +276,7 @@ class TestPhase2Builder:
         }
 
         fields = [field]
-        files = {"200": FileNode(file_id="file200", number="200", name="NEW PERSON")}
+        files = {"200": FileNode(file_id="file200", file_number="200", name="NEW PERSON")}
 
         count = builder.create_variable_pointer_relationships(v_pointers, fields, files)
 
@@ -319,11 +319,11 @@ class TestPhase2Builder:
             data_type="F",
         )
 
-        parent = FileNode(file_id="file1", number="2", name="PATIENT")
+        parent = FileNode(file_id="file1", file_number="2", name="PATIENT")
 
         subfile = SubfileNode(
             file_id="file2",
-            number="2.01",
+            file_number="2.01",
             name="ALIAS",
             parent_file_number="2",
             parent_field_number=".01",

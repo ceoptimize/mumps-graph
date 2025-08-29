@@ -118,6 +118,11 @@ uv run python -m src.main --phase 3 --all-packages
 
 # Or load just Registration package for testing (~2 seconds)
 uv run python -m src.main --phase 3
+
+# Phase 4: Load code relationships (requires Phase 3)
+# Creates: Global nodes
+# Creates: CALLS, INVOKES, ACCESSES, FALLS_THROUGH, STORED_IN relationships
+uv run python -m src.main --phase 4
 ```
 
 #### 6. Verify the Load
@@ -138,6 +143,9 @@ ORDER BY Count DESC
 // With Phase 3 adds:
 // Label          302,698
 // Routine         33,951
+
+// With Phase 4 adds:
+// Global           2,952
 ```
 
 ```cypher
@@ -156,6 +164,13 @@ ORDER BY Count DESC
 // With Phase 3 adds:
 // CONTAINS_LABEL  302,698
 // OWNS_ROUTINE      6,276
+
+// With Phase 4 adds:
+// ACCESSES         46,854
+// FALLS_THROUGH     8,149
+// INVOKES           6,132
+// CALLS             5,901
+// STORED_IN         2,720
 ```
 
 ### Complete Reload Process
@@ -169,13 +184,14 @@ uv run python -m src.main --phase 1 && \
 uv run python -m src.main --phase 2
 # Total time: ~5 minutes
 
-# Full reload including all code structure (Phases 1-3)
+# Full reload including all code structure and relationships (Phases 1-4)
 uv run python cleanup_database.py && \
 uv run python -m src.main --phase 1 && \
 uv run python -m src.main --phase 2 && \
 uv run python create_phase3_indexes.py && \
-uv run python -m src.main --phase 3 --all-packages
-# Total time: ~6 minutes with indexes
+uv run python -m src.main --phase 3 --all-packages && \
+uv run python -m src.main --phase 4
+# Total time: ~8 minutes with indexes
 
 # Validate the complete load
 uv run python validate_phase3_graph.py
@@ -196,7 +212,7 @@ CALL db.schema.visualization()
 
 **Find the PATIENT file and its fields:**
 ```cypher
-MATCH (f:File {number: "2", name: "PATIENT"})-[:CONTAINS_FIELD]->(field)
+MATCH (f:File {file_number: "2", name: "PATIENT"})-[:CONTAINS_FIELD]->(field)
 RETURN f, field
 LIMIT 25
 ```
@@ -209,7 +225,7 @@ RETURN f, r, x
 
 **Trace subfile hierarchy:**
 ```cypher
-MATCH path = (child:File)-[:SUBFILE_OF*]->(parent:File {number: "2"})
+MATCH path = (child:File)-[:SUBFILE_OF*]->(parent:File {file_number: "2"})
 RETURN path
 ```
 
@@ -225,7 +241,7 @@ LIMIT 50
 **Files with most fields:**
 ```cypher
 MATCH (f:File)-[:CONTAINS_FIELD]->(field)
-RETURN f.name, f.number, count(field) as field_count
+RETURN f.name, f.file_number, count(field) as field_count
 ORDER BY field_count DESC
 LIMIT 10
 ```
@@ -233,7 +249,7 @@ LIMIT 10
 **Most referenced files (pointer targets):**
 ```cypher
 MATCH (field:Field)-[:POINTS_TO]->(f:File)
-RETURN f.name, f.number, count(field) as references
+RETURN f.name, f.file_number, count(field) as references
 ORDER BY references DESC
 LIMIT 10
 ```
@@ -241,9 +257,9 @@ LIMIT 10
 **Complex subfile structures:**
 ```cypher
 MATCH (f:File)
-WHERE f.number CONTAINS "."
-WITH f, size(split(f.number, ".")) as depth
-RETURN f.name, f.number, depth
+WHERE f.file_number CONTAINS "."
+WITH f, size(split(f.file_number, ".")) as depth
+RETURN f.name, f.file_number, depth
 ORDER BY depth DESC
 LIMIT 10
 ```

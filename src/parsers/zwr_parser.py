@@ -166,7 +166,7 @@ class ZWRParser:
                 # Process file header: ^DD(file_num,0)="NAME^GLOBAL^..."
                 file_node = self._process_file_header(parsed)
                 if file_node:
-                    files[file_node.number] = file_node
+                    files[file_node.file_number] = file_node
 
             elif parsed.is_field_definition():
                 # Process field definition: ^DD(file_num,field_num,0)="NAME^TYPE^..."
@@ -204,7 +204,7 @@ class ZWRParser:
         is_subfile = "SUB-FILE" in parsed.value.upper() or float(file_number) % 1 != 0
 
         return FileNode(
-            number=file_number,
+            file_number=file_number,  # Changed from 'number'
             name=file_name,
             global_root=global_root,
             is_subfile=is_subfile,
@@ -456,6 +456,7 @@ class ZWRParser:
         Identify and create subfile nodes from file definitions.
 
         Subfiles are identified by decimal file numbers (e.g., 2.01 is subfile of 2).
+        Files starting with "." (like .001, .007) are treated as top-level files, not subfiles.
 
         Args:
             files: Dict of file_number -> FileNode
@@ -468,9 +469,17 @@ class ZWRParser:
         for file_num, file_node in files.items():
             # Check if this is a subfile (contains decimal point)
             if "." in file_num:
+                # Files starting with "." (like .001, .007) are top-level files, not subfiles
+                if file_num.startswith("."):
+                    continue
+                    
                 # Parse parent file number
                 parts = file_num.split(".")
                 parent_num = parts[0]
+                
+                # Skip if parent_num is empty (shouldn't happen after the startswith check)
+                if not parent_num:
+                    continue
 
                 # Calculate nesting level (number of dots + 1)
                 nesting_level = len(parts)
@@ -481,7 +490,7 @@ class ZWRParser:
 
                 subfile_node = SubfileNode(
                     file_id=file_node.file_id,
-                    number=file_node.number,
+                    file_number=file_node.file_number,  # Changed from 'number'
                     name=file_node.name,
                     global_root=file_node.global_root,
                     parent_file=file_node.parent_file,

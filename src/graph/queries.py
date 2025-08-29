@@ -52,7 +52,7 @@ class GraphQueries:
             "CONTAINS_FILE": ("Package", "package_id", "File", "file_id"),
             "POINTS_TO": ("Field", "field_id", "File", "file_id"),
             "COMPUTED_FROM": ("Field", "field_id", "Field", "field_id"),
-            "SUBFILE_OF": ("File", "number", "File", "number"),  # Match on file number
+            "SUBFILE_OF": ("File", "file_number", "File", "file_number"),  # Match on file number
             "INDEXED_BY": (
                 "Field",
                 "file_number,number",
@@ -82,8 +82,8 @@ class GraphQueries:
             # Match on file numbers and determine parent
             return f"""
             UNWIND $batch AS item
-            MATCH (from:{from_label} {{number: item.from_number}})
-            MATCH (to:{to_label} {{number: item.to_number}})
+            MATCH (from:{from_label} {{file_number: item.from_number}})
+            MATCH (to:{to_label} {{file_number: item.to_number}})
             MERGE (from)-[r:{rel_type}]->(to)
             SET r = item.props
             RETURN count(r) AS created
@@ -221,8 +221,8 @@ class GraphQueries:
         return """
         MATCH (f:File)
         WHERE NOT (f)<-[:CONTAINS_FILE]-(:Package)
-        RETURN f.number AS file_number, f.name AS file_name
-        ORDER BY f.number
+        RETURN f.file_number AS file_number, f.name AS file_name
+        ORDER BY f.file_number
         """
 
     @staticmethod
@@ -301,7 +301,7 @@ class GraphQueries:
         MATCH (f:File {number: $file_number})-[:CONTAINS_FIELD]->(field:Field)
         WHERE field.is_pointer = true
         MATCH (field)-[:POINTS_TO]->(target:File)
-        RETURN DISTINCT target.number AS file_number,
+        RETURN DISTINCT target.file_number AS file_number,
                         target.name AS file_name,
                         count(field) AS reference_count
         ORDER BY reference_count DESC
@@ -322,7 +322,7 @@ class GraphQueries:
         MATCH (target:File {number: $file_number})
         MATCH (field:Field)-[:POINTS_TO]->(target)
         MATCH (source:File)-[:CONTAINS_FIELD]->(field)
-        RETURN DISTINCT source.number AS file_number,
+        RETURN DISTINCT source.file_number AS file_number,
                         source.name AS file_name,
                         count(field) AS reference_count
         ORDER BY reference_count DESC
@@ -346,18 +346,18 @@ class GraphQueries:
             MATCH (parent:File {number: $parent_number})
             MATCH (child:File)-[:SUBFILE_OF]->(parent)
             RETURN parent.name AS parent_name,
-                   child.number AS subfile_number,
+                   child.file_number AS subfile_number,
                    child.name AS subfile_name
-            ORDER BY child.number
+            ORDER BY child.file_number
             """
         return """
         MATCH (child:File)-[r:SUBFILE_OF]->(parent:File)
-        RETURN parent.number AS parent_number,
+        RETURN parent.file_number AS parent_number,
                parent.name AS parent_name,
                child.number AS subfile_number,
                child.name AS subfile_name,
                r.level AS nesting_level
-        ORDER BY parent.number, child.number
+        ORDER BY parent.file_number, child.file_number
         """
 
     @staticmethod
@@ -401,7 +401,7 @@ class GraphQueries:
         MATCH (f)-[r:VARIABLE_POINTER]->(target:File)
         RETURN f.name AS field_name,
                collect({
-                   file: target.number,
+                   file: target.file_number,
                    name: target.name,
                    global: r.target_global,
                    description: r.target_description
@@ -453,7 +453,7 @@ class GraphQueries:
         MATCH (f:File)
         WHERE NOT (f)-[:SUBFILE_OF]->()
         OPTIONAL MATCH path = (f)<-[:SUBFILE_OF*]-(sub:File)
-        RETURN f.number AS root_file,
+        RETURN f.file_number AS root_file,
                f.name AS root_name,
                count(sub) AS subfile_count
         ORDER BY subfile_count DESC

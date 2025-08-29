@@ -36,7 +36,7 @@ class FileNode(BaseModel):
     """File/Table definition from DD."""
 
     file_id: str = Field(default_factory=lambda: str(uuid4()))
-    number: str  # e.g., "2" for PATIENT file
+    file_number: str  # e.g., "2" for PATIENT file (renamed from 'number' for consistency)
     name: str  # e.g., "PATIENT"
     global_root: Optional[str] = None  # e.g., "^DPT"
     parent_file: Optional[str] = None  # For subfiles
@@ -49,7 +49,7 @@ class FileNode(BaseModel):
         """Convert to dict for Neo4j node creation."""
         return {
             "file_id": self.file_id,
-            "number": self.number,
+            "file_number": self.file_number,  # Changed from 'number'
             "name": self.name,
             "global_root": self.global_root,
             "parent_file": self.parent_file,
@@ -81,7 +81,7 @@ class FieldNode(BaseModel):
         """Convert to dict for Neo4j node creation."""
         return {
             "field_id": self.field_id,
-            "number": self.number,
+            "number": self.number,  # Field number (e.g., ".01")
             "name": self.name,
             "file_number": self.file_number,
             "data_type": self.data_type,
