@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 from src.config.settings import get_settings
@@ -56,8 +57,8 @@ def parse_arguments():
         "--phase",
         type=int,
         default=1,
-        choices=[1, 2, 3],
-        help="Phase to execute (1: Foundation, 2: Static Relationships, 3: Code Structure)",
+        choices=[1, 2, 3, 4],
+        help="Phase to execute (1: Foundation, 2: Static Relationships, 3: Code Structure, 4: Code Relationships)",
     )
 
     parser.add_argument(
@@ -152,8 +153,29 @@ This will create:
 • CONTAINS_LABEL relationships
 • OWNS_ROUTINE relationships
         """
+    elif phase == 4:
+        welcome_text = """
+[bold cyan]VistA Graph Database[/bold cyan]
+[yellow]Phase 4: Code Relationships[/yellow]
+
+Extracting code interdependencies and global access patterns:
+• Call patterns (DO, GOTO, JOB)
+• Function invocations ($$)
+• Global access patterns (READ, WRITE, KILL)
+• Control flow relationships
+
+This will create:
+• Global nodes
+• CALLS relationships
+• INVOKES relationships
+• ACCESSES relationships
+• FALLS_THROUGH relationships
+• STORED_IN relationships
+        """
     else:
-        welcome_text = f"[bold cyan]VistA Graph Database[/bold cyan]\n[yellow]Phase {phase}[/yellow]"
+        welcome_text = (
+            f"[bold cyan]VistA Graph Database[/bold cyan]\n[yellow]Phase {phase}[/yellow]"
+        )
 
     console.print(Panel.fit(welcome_text, title="Welcome", border_style="cyan"))
 
@@ -357,9 +379,7 @@ def phase2_pipeline(args):
 
     if v_pointers:
         console.print("[cyan]Creating VARIABLE_POINTER relationships...[/cyan]")
-        vpointer_count = builder.create_variable_pointer_relationships(
-            v_pointers, fields, files
-        )
+        vpointer_count = builder.create_variable_pointer_relationships(v_pointers, fields, files)
         console.print(f"[green]✅ Created {vpointer_count} VARIABLE_POINTER relationships[/green]")
 
     # Validate Phase 2
@@ -382,7 +402,7 @@ def phase2_pipeline(args):
 def validate_phase2(connection: Neo4jConnection):
     """
     Validate Phase 2 specific relationships.
-    
+
     Args:
         connection: Neo4j connection
     """
@@ -426,7 +446,7 @@ def validate_phase2(connection: Neo4jConnection):
 def display_phase2_results(xrefs: int, indexed: int, subfiles: int, vpointers: int):
     """
     Display Phase 2 execution results.
-    
+
     Args:
         xrefs: Number of cross-reference nodes created
         indexed: Number of INDEXED_BY relationships created
@@ -490,6 +510,7 @@ def phase3_pipeline(args):
 
     # Find and parse routine files
     from pathlib import Path
+
     vista_source_dir = settings.get_absolute_path(Path("Vista-M-source-code"))
     packages_dir = vista_source_dir / "Packages"
 
@@ -525,11 +546,15 @@ def phase3_pipeline(args):
                 console.print(f"[cyan]Processing {package_dir.name} package...[/cyan]")
                 routines, labels = routine_parser.parse_directory(routines_dir, package_dir.name)
                 if routines:
-                    console.print(f"[dim]  Found {len(routines)} routines with {len(labels)} labels[/dim]")
+                    console.print(
+                        f"[dim]  Found {len(routines)} routines with {len(labels)} labels[/dim]"
+                    )
                     all_routines.extend(routines)
                     all_labels.extend(labels)
 
-    console.print(f"\n[green]✅ Total: {len(all_routines)} routines with {len(all_labels)} labels[/green]")
+    console.print(
+        f"\n[green]✅ Total: {len(all_routines)} routines with {len(all_labels)} labels[/green]"
+    )
 
     # Build Phase 3 graph extensions
     console.print("\n[cyan]Building Phase 3 graph extensions...[/cyan]")
@@ -567,7 +592,7 @@ def phase3_pipeline(args):
         len(all_routines),
         len(all_labels),
         contains_count if all_routines and all_labels else 0,
-        owns_count if all_routines else 0
+        owns_count if all_routines else 0,
     )
 
 
@@ -583,44 +608,44 @@ def validate_phase3(connection: Neo4jConnection):
         {
             "description": "Routine nodes",
             "query": "MATCH (r:Routine) RETURN count(r) as count",
-            "expected_minimum": 1
+            "expected_minimum": 1,
         },
         # Check for labels
         {
             "description": "Label nodes",
             "query": "MATCH (l:Label) RETURN count(l) as count",
-            "expected_minimum": 1
+            "expected_minimum": 1,
         },
         # Check CONTAINS_LABEL relationships
         {
             "description": "CONTAINS_LABEL",
             "query": "MATCH ()-[:CONTAINS_LABEL]->() RETURN count(*) as count",
-            "expected_minimum": 1
+            "expected_minimum": 1,
         },
         # Check OWNS_ROUTINE relationships
         {
             "description": "OWNS_ROUTINE",
             "query": "MATCH ()-[:OWNS_ROUTINE]->() RETURN count(*) as count",
-            "expected_minimum": 0  # May not have package matches
+            "expected_minimum": 0,  # May not have package matches
         },
         # Check for orphaned routines
         {
             "description": "Orphaned routines (no package)",
             "query": "MATCH (r:Routine) WHERE NOT ((:Package)-[:OWNS_ROUTINE]->(r)) RETURN count(r) as count",
-            "expected_minimum": -1  # Just informational
+            "expected_minimum": -1,  # Just informational
         },
         # Check for entry points
         {
             "description": "Entry point labels",
             "query": "MATCH (l:Label {is_entry_point: true}) RETURN count(l) as count",
-            "expected_minimum": 0
+            "expected_minimum": 0,
         },
         # Check for functions
         {
             "description": "Function labels",
             "query": "MATCH (l:Label {is_function: true}) RETURN count(l) as count",
-            "expected_minimum": 0
-        }
+            "expected_minimum": 0,
+        },
     ]
 
     results = []
@@ -629,15 +654,21 @@ def validate_phase3(connection: Neo4jConnection):
             result = connection.execute_query(check["query"])
             if result:
                 count = result[0]["count"]
-                status = "INFO" if check["expected_minimum"] < 0 else (
-                    "PASS" if count >= check["expected_minimum"] else "WARN"
+                status = (
+                    "INFO"
+                    if check["expected_minimum"] < 0
+                    else ("PASS" if count >= check["expected_minimum"] else "WARN")
                 )
-                results.append({
-                    "entity_type": check["description"],
-                    "expected_minimum": check["expected_minimum"] if check["expected_minimum"] >= 0 else "N/A",
-                    "actual_count": count,
-                    "status": status
-                })
+                results.append(
+                    {
+                        "entity_type": check["description"],
+                        "expected_minimum": check["expected_minimum"]
+                        if check["expected_minimum"] >= 0
+                        else "N/A",
+                        "actual_count": count,
+                        "status": status,
+                    }
+                )
         except Exception as e:
             logging.error(f"Validation query failed: {e}")
 
@@ -650,14 +681,16 @@ def validate_phase3(connection: Neo4jConnection):
         table.add_column("Status", justify="center")
 
         for result in results:
-            status_color = "green" if result["status"] == "PASS" else (
-                "yellow" if result["status"] == "WARN" else "dim"
+            status_color = (
+                "green"
+                if result["status"] == "PASS"
+                else ("yellow" if result["status"] == "WARN" else "dim")
             )
             table.add_row(
                 result["entity_type"],
                 str(result["expected_minimum"]),
                 str(result["actual_count"]),
-                f"[{status_color}]{result['status']}[/{status_color}]"
+                f"[{status_color}]{result['status']}[/{status_color}]",
             )
 
         console.print(table)
@@ -683,8 +716,438 @@ def display_phase3_results(routines: int, labels: int, contains: int, owns: int)
     table.add_row("OWNS_ROUTINE relationships", str(owns))
     table.add_row("", "")
     table.add_row(
+        "[bold]Total new entities[/bold]", f"[bold]{routines + labels + contains + owns}[/bold]"
+    )
+
+    console.print("\n")
+    console.print(table)
+
+
+def phase4_pipeline(args):
+    """
+    Execute Phase 4 pipeline: Extract code relationships with proper node resolution.
+
+    Args:
+        args: Command line arguments
+    """
+    settings = get_settings()
+    from pathlib import Path
+
+    from src.graph.node_cache import NodeLookupCache
+    from src.parsers.code_extractor import CodeRelationshipExtractor
+
+    # Initialize Neo4j connection
+    console.print("\n[cyan]Connecting to Neo4j...[/cyan]")
+    connection = Neo4jConnection()
+
+    if not connection.connect():
+        console.print("[red]❌ Failed to connect to Neo4j![/red]")
+        console.print(
+            "[yellow]Make sure Neo4j is running:[/yellow]\n"
+            "  docker-compose -f docker/docker-compose.yml up -d"
+        )
+        sys.exit(1)
+    console.print("[green]✅ Connected to Neo4j[/green]")
+
+    # Check if Phase 3 has been completed
+    console.print("\n[cyan]Checking Phase 3 completion...[/cyan]")
+    db_info = connection.get_database_info()
+
+    if not db_info or db_info.get("total_nodes", 0) == 0:
+        console.print("[red]❌ Phase 1-3 must be completed first![/red]")
+        console.print("Run: python -m src.main --phase 1")
+        console.print("     python -m src.main --phase 2")
+        console.print("     python -m src.main --phase 3")
+        sys.exit(1)
+
+    # Check for Label nodes specifically
+    label_check = connection.execute_query("MATCH (l:Label) RETURN count(l) as count")
+    if not label_check or label_check[0]["count"] == 0:
+        console.print("[red]❌ No Label nodes found. Phase 3 must be completed first![/red]")
+        sys.exit(1)
+
+    console.print(f"[green]✅ Found {db_info['total_nodes']} nodes from previous phases[/green]")
+
+    # Initialize node lookup cache
+    console.print("\n[cyan]Loading existing nodes from Phases 1-3...[/cyan]")
+    node_cache = NodeLookupCache(connection)
+    if not node_cache.load_from_neo4j():
+        console.print("[red]❌ Failed to load node cache![/red]")
+        sys.exit(1)
+
+    cache_stats = node_cache.get_statistics()
+    console.print(
+        f"[green]✅ Loaded: {cache_stats['labels']} labels, "
+        f"{cache_stats['routines']} routines, "
+        f"{cache_stats['files']} files[/green]"
+    )
+
+    # Create Global nodes
+    console.print("\n[cyan]Creating Global nodes...[/cyan]")
+    globals_to_create = {}  # {global_name: file_number or None}
+
+    # From File.global_root
+    for file_num, (_file_id, global_root) in node_cache.files.items():
+        if global_root:
+            global_name = global_root.replace("^", "").split("(")[0]
+            globals_to_create[global_name] = file_num
+
+    # Build graph and create Global nodes
+    builder = GraphBuilder(connection, batch_size=args.batch_size)
+    global_count = builder.create_global_nodes(globals_to_create)
+    console.print(f"[green]✅ Created {global_count} Global nodes[/green]")
+
+    # Reload cache with new Global nodes
+    node_cache.load_globals()
+
+    # Create STORED_IN relationships
+    stored_count = builder.create_stored_in_relationships(node_cache)
+    console.print(f"[green]✅ Created {stored_count} STORED_IN relationships[/green]")
+
+    # Initialize code extractor
+    extractor = CodeRelationshipExtractor(node_cache)
+
+    # Find and process routine files
+    vista_source_dir = settings.get_absolute_path(Path("Vista-M-source-code"))
+    packages_dir = vista_source_dir / "Packages"
+
+    if not packages_dir.exists():
+        console.print(f"[red]❌ Packages directory not found: {packages_dir}[/red]")
+        sys.exit(1)
+
+    # Extract relationships from routines
+    all_calls = []
+    all_unresolved_calls = []
+    all_invokes = []
+    all_unresolved_invokes = []
+    all_accesses = []
+    all_orphan_accesses = []
+    all_falls_through = []
+
+    console.print("\n[cyan]Extracting code relationships...[/cyan]")
+
+    # Process Registration package as primary target
+    registration_dir = packages_dir / "Registration" / "Routines"
+    if registration_dir.exists():
+        console.print("[cyan]Processing Registration package routines...[/cyan]")
+        routine_files = list(registration_dir.glob("*.m"))
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task(
+                f"[cyan]Processing {len(routine_files)} routines...", total=len(routine_files)
+            )
+
+            for routine_file in routine_files:
+                # Extract CALLS
+                calls, unresolved, orphans = extractor.extract_calls_from_routine(routine_file)
+                all_calls.extend(calls)
+                all_unresolved_calls.extend(unresolved)
+
+                # Extract INVOKES
+                invokes, unresolved_inv, orphan_inv = extractor.extract_invokes_from_routine(
+                    routine_file
+                )
+                all_invokes.extend(invokes)
+                all_unresolved_invokes.extend(unresolved_inv)
+
+                # Extract ACCESSES
+                accesses, orphan_acc = extractor.extract_accesses_from_routine(routine_file)
+                all_accesses.extend(accesses)
+                all_orphan_accesses.extend(orphan_acc)
+
+                # Extract FALLS_THROUGH
+                falls = extractor.extract_falls_through_relationships(routine_file)
+                all_falls_through.extend(falls)
+
+                progress.advance(task)
+
+    # Process additional packages if requested
+    if args.all_packages:
+        console.print("[cyan]Processing all other packages...[/cyan]")
+        for package_dir in packages_dir.iterdir():
+            if package_dir.name == "Registration" or not package_dir.is_dir():
+                continue
+
+            routines_dir = package_dir / "Routines"
+            if routines_dir.exists():
+                routine_files = list(routines_dir.glob("*.m"))
+                if routine_files:
+                    console.print(
+                        f"[dim]  Processing {package_dir.name}: {len(routine_files)} routines[/dim]"
+                    )
+
+                    for routine_file in routine_files:
+                        calls, unresolved, orphans = extractor.extract_calls_from_routine(
+                            routine_file
+                        )
+                        all_calls.extend(calls)
+                        all_unresolved_calls.extend(unresolved)
+
+                        invokes, unresolved_inv, orphan_inv = (
+                            extractor.extract_invokes_from_routine(routine_file)
+                        )
+                        all_invokes.extend(invokes)
+                        all_unresolved_invokes.extend(unresolved_inv)
+
+                        accesses, orphan_acc = extractor.extract_accesses_from_routine(routine_file)
+                        all_accesses.extend(accesses)
+                        all_orphan_accesses.extend(orphan_acc)
+
+                        falls = extractor.extract_falls_through_relationships(routine_file)
+                        all_falls_through.extend(falls)
+
+    # Create relationships in Neo4j
+    console.print("\n[cyan]Creating relationships in graph database...[/cyan]")
+
+    # Create CALLS relationships
+    if all_calls:
+        console.print(f"[cyan]Creating {len(all_calls)} CALLS relationships...[/cyan]")
+        calls_count = builder.create_calls_relationships(all_calls)
+        console.print(f"[green]✅ Created {calls_count} CALLS relationships[/green]")
+
+    # Create INVOKES relationships
+    if all_invokes:
+        console.print(f"[cyan]Creating {len(all_invokes)} INVOKES relationships...[/cyan]")
+        invokes_count = builder.create_invokes_relationships(all_invokes)
+        console.print(f"[green]✅ Created {invokes_count} INVOKES relationships[/green]")
+
+    # Create ACCESSES relationships
+    if all_accesses:
+        console.print(f"[cyan]Creating {len(all_accesses)} ACCESSES relationships...[/cyan]")
+        accesses_count = builder.create_accesses_relationships(all_accesses)
+        console.print(f"[green]✅ Created {accesses_count} ACCESSES relationships[/green]")
+
+    # Create FALLS_THROUGH relationships
+    if all_falls_through:
+        console.print(
+            f"[cyan]Creating {len(all_falls_through)} FALLS_THROUGH relationships...[/cyan]"
+        )
+        falls_count = builder.create_falls_through_relationships(all_falls_through)
+        console.print(f"[green]✅ Created {falls_count} FALLS_THROUGH relationships[/green]")
+
+    # Handle orphan accesses by creating new globals
+    if all_orphan_accesses:
+        console.print(
+            f"\n[cyan]Creating globals for {len(all_orphan_accesses)} orphan accesses...[/cyan]"
+        )
+        orphan_globals = {}
+        for acc in all_orphan_accesses:
+            if (
+                acc["global_name"] not in orphan_globals
+                and acc["global_name"] not in node_cache.globals
+            ):
+                orphan_globals[acc["global_name"]] = None
+
+        if orphan_globals:
+            orphan_global_count = builder.create_global_nodes(orphan_globals)
+            console.print(
+                f"[green]✅ Created {orphan_global_count} additional Global nodes[/green]"
+            )
+
+            # Reload globals and create orphan accesses
+            node_cache.load_globals()
+
+            resolved_orphans = []
+            for acc in all_orphan_accesses:
+                global_id = node_cache.resolve_global(acc["global_name"])
+                if global_id:
+                    acc["global_id"] = global_id
+                    resolved_orphans.append(acc)
+
+            if resolved_orphans:
+                orphan_access_count = builder.create_accesses_relationships(resolved_orphans)
+                console.print(
+                    f"[green]✅ Created {orphan_access_count} additional ACCESSES relationships[/green]"
+                )
+
+    # Report unresolved references
+    if all_unresolved_calls:
+        console.print(f"\n[yellow]⚠️  {len(all_unresolved_calls)} unresolved CALLS[/yellow]")
+        for call in all_unresolved_calls[:5]:  # Show first 5
+            console.print(
+                f"    {call['source_routine']}:{call['source_label']} -> "
+                f"{call['target_routine']}:{call['target_label']}"
+            )
+        if len(all_unresolved_calls) > 5:
+            console.print(f"    ... and {len(all_unresolved_calls) - 5} more")
+
+    if all_unresolved_invokes:
+        console.print(f"\n[yellow]⚠️  {len(all_unresolved_invokes)} unresolved INVOKES[/yellow]")
+        for inv in all_unresolved_invokes[:5]:  # Show first 5
+            console.print(
+                f"    {inv['source_routine']}:{inv['source_label']} -> "
+                f"$${inv['target_label']}^{inv['target_routine']}"
+            )
+        if len(all_unresolved_invokes) > 5:
+            console.print(f"    ... and {len(all_unresolved_invokes) - 5} more")
+
+    # Validate Phase 4
+    console.print("\n[cyan]Validating Phase 4 results...[/cyan]")
+    validate_phase4(connection)
+
+    # Display summary
+    display_phase4_results(
+        global_count + (orphan_global_count if all_orphan_accesses else 0),
+        calls_count if all_calls else 0,
+        invokes_count if all_invokes else 0,
+        accesses_count + (orphan_access_count if all_orphan_accesses else 0) if all_accesses else 0,
+        falls_count if all_falls_through else 0,
+        stored_count,
+        len(all_unresolved_calls),
+        len(all_unresolved_invokes),
+    )
+
+    # Disconnect
+    connection.disconnect()
+    console.print("\n[green]✅ Phase 4 completed successfully![/green]")
+
+
+def validate_phase4(connection: Neo4jConnection):
+    """
+    Validate Phase 4 specific relationships and nodes.
+
+    Args:
+        connection: Neo4j connection
+    """
+    validation_queries = [
+        {
+            "description": "Global nodes",
+            "query": "MATCH (g:Global) RETURN count(g) as count",
+            "expected_minimum": 1,
+        },
+        {
+            "description": "CALLS relationships",
+            "query": "MATCH ()-[:CALLS]->() RETURN count(*) as count",
+            "expected_minimum": 0,
+        },
+        {
+            "description": "INVOKES relationships",
+            "query": "MATCH ()-[:INVOKES]->() RETURN count(*) as count",
+            "expected_minimum": 0,
+        },
+        {
+            "description": "ACCESSES relationships",
+            "query": "MATCH ()-[:ACCESSES]->() RETURN count(*) as count",
+            "expected_minimum": 0,
+        },
+        {
+            "description": "FALLS_THROUGH relationships",
+            "query": "MATCH ()-[:FALLS_THROUGH]->() RETURN count(*) as count",
+            "expected_minimum": 0,
+        },
+        {
+            "description": "STORED_IN relationships",
+            "query": "MATCH ()-[:STORED_IN]->() RETURN count(*) as count",
+            "expected_minimum": 0,
+        },
+        {
+            "description": "Orphan globals (no file)",
+            "query": "MATCH (g:Global) WHERE g.file_number IS NULL RETURN count(g) as count",
+            "expected_minimum": -1,  # Just informational
+        },
+    ]
+
+    results = []
+    for check in validation_queries:
+        try:
+            result = connection.execute_query(check["query"])
+            if result:
+                count = result[0]["count"]
+                status = (
+                    "INFO"
+                    if check["expected_minimum"] < 0
+                    else ("PASS" if count >= check["expected_minimum"] else "WARN")
+                )
+                results.append(
+                    {
+                        "entity_type": check["description"],
+                        "expected_minimum": check["expected_minimum"]
+                        if check["expected_minimum"] >= 0
+                        else "N/A",
+                        "actual_count": count,
+                        "status": status,
+                    }
+                )
+        except Exception as e:
+            logging.error(f"Validation query failed: {e}")
+
+    if results:
+        # Create validation table
+        table = Table(title="Phase 4 Validation", show_header=True)
+        table.add_column("Entity Type", style="cyan")
+        table.add_column("Expected Min", justify="right")
+        table.add_column("Actual Count", justify="right")
+        table.add_column("Status", justify="center")
+
+        for result in results:
+            status_color = (
+                "green"
+                if result["status"] == "PASS"
+                else ("yellow" if result["status"] == "WARN" else "dim")
+            )
+            table.add_row(
+                result["entity_type"],
+                str(result["expected_minimum"]),
+                str(result["actual_count"]),
+                f"[{status_color}]{result['status']}[/{status_color}]",
+            )
+
+        console.print(table)
+
+
+def display_phase4_results(
+    globals: int,
+    calls: int,
+    invokes: int,
+    accesses: int,
+    falls: int,
+    stored: int,
+    unresolved_calls: int,
+    unresolved_invokes: int,
+):
+    """
+    Display Phase 4 execution results.
+
+    Args:
+        globals: Number of Global nodes created
+        calls: Number of CALLS relationships created
+        invokes: Number of INVOKES relationships created
+        accesses: Number of ACCESSES relationships created
+        falls: Number of FALLS_THROUGH relationships created
+        stored: Number of STORED_IN relationships created
+        unresolved_calls: Number of unresolved call references
+        unresolved_invokes: Number of unresolved function references
+    """
+    table = Table(title="Phase 4 Results", show_header=True)
+    table.add_column("Entity Type", style="cyan")
+    table.add_column("Count", justify="right", style="green")
+
+    table.add_row("Global nodes", str(globals))
+    table.add_row("CALLS relationships", str(calls))
+    table.add_row("INVOKES relationships", str(invokes))
+    table.add_row("ACCESSES relationships", str(accesses))
+    table.add_row("FALLS_THROUGH relationships", str(falls))
+    table.add_row("STORED_IN relationships", str(stored))
+
+    if unresolved_calls > 0 or unresolved_invokes > 0:
+        table.add_row("", "")
+        if unresolved_calls > 0:
+            table.add_row(
+                "[yellow]Unresolved calls[/yellow]", f"[yellow]{unresolved_calls}[/yellow]"
+            )
+        if unresolved_invokes > 0:
+            table.add_row(
+                "[yellow]Unresolved invokes[/yellow]", f"[yellow]{unresolved_invokes}[/yellow]"
+            )
+
+    table.add_row("", "")
+    table.add_row(
         "[bold]Total new entities[/bold]",
-        f"[bold]{routines + labels + contains + owns}[/bold]"
+        f"[bold]{globals + calls + invokes + accesses + falls + stored}[/bold]",
     )
 
     console.print("\n")
@@ -734,7 +1197,9 @@ def validate_graph(connection: Neo4jConnection):
         issues = []
 
         # Check for orphan files
-        orphan_query = "MATCH (f:File) WHERE NOT (()-[:CONTAINS_FILE]->(f)) RETURN count(f) AS count"
+        orphan_query = (
+            "MATCH (f:File) WHERE NOT (()-[:CONTAINS_FILE]->(f)) RETURN count(f) AS count"
+        )
         orphan_result = connection.execute_query(orphan_query)
         if orphan_result and orphan_result[0]["count"] > 0:
             issues.append(f"Found {orphan_result[0]['count']} orphan files")
@@ -799,6 +1264,8 @@ def main():
             phase2_pipeline(args)
         elif args.phase == 3:
             phase3_pipeline(args)
+        elif args.phase == 4:
+            phase4_pipeline(args)
         else:
             console.print(f"[red]Phase {args.phase} not implemented yet![/red]")
             sys.exit(1)

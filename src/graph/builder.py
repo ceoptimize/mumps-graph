@@ -1,7 +1,7 @@
 """Graph builder for creating Neo4j database from VistA data."""
 
 import logging
-from typing import Any, Dict, Generator, List
+from typing import Any, Dict, Generator, List, Optional
 
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -122,9 +122,7 @@ class GraphBuilder:
                 batch_data = [pkg.dict_for_neo4j() for pkg in batch]
 
                 try:
-                    result = self.connection.execute_query(
-                        query, {"batch": batch_data}
-                    )
+                    result = self.connection.execute_query(query, {"batch": batch_data})
                     if result:
                         count += len(batch)
                     progress.advance(task, len(batch))
@@ -162,9 +160,7 @@ class GraphBuilder:
                 batch_data = [file.dict_for_neo4j() for file in batch]
 
                 try:
-                    result = self.connection.execute_query(
-                        query, {"batch": batch_data}
-                    )
+                    result = self.connection.execute_query(query, {"batch": batch_data})
                     if result:
                         count += len(batch)
                     progress.advance(task, len(batch))
@@ -202,9 +198,7 @@ class GraphBuilder:
                 batch_data = [field.dict_for_neo4j() for field in batch]
 
                 try:
-                    result = self.connection.execute_query(
-                        query, {"batch": batch_data}
-                    )
+                    result = self.connection.execute_query(query, {"batch": batch_data})
                     if result:
                         count += len(batch)
                     progress.advance(task, len(batch))
@@ -266,9 +260,7 @@ class GraphBuilder:
                 ]
 
                 try:
-                    result = self.connection.execute_query(
-                        query, {"batch": batch_data}
-                    )
+                    result = self.connection.execute_query(query, {"batch": batch_data})
                     if result:
                         count += len(batch)
                     progress.advance(task, len(batch))
@@ -411,9 +403,7 @@ class GraphBuilder:
             "MATCH (n) RETURN labels(n)[0] AS label, count(n) AS count"
         )
         if node_counts:
-            validation["node_counts"] = {
-                record["label"]: record["count"] for record in node_counts
-            }
+            validation["node_counts"] = {record["label"]: record["count"] for record in node_counts}
 
         # Check relationship counts
         rel_counts = self.connection.execute_query(
@@ -426,8 +416,7 @@ class GraphBuilder:
 
         # Check orphan nodes
         orphan_files = self.connection.execute_query(
-            "MATCH (f:File) WHERE NOT (()-[:CONTAINS_FIELD]->(f)) "
-            "RETURN count(f) AS count"
+            "MATCH (f:File) WHERE NOT (()-[:CONTAINS_FIELD]->(f)) RETURN count(f) AS count"
         )
         if orphan_files:
             validation["orphan_files"] = orphan_files[0]["count"]
@@ -444,9 +433,7 @@ class GraphBuilder:
 
     # Phase 2: Enhanced relationship methods
 
-    def create_cross_reference_nodes(
-        self, xrefs: Dict[str, CrossReferenceNode]
-    ) -> int:
+    def create_cross_reference_nodes(self, xrefs: Dict[str, CrossReferenceNode]) -> int:
         """
         Create cross-reference nodes in Neo4j.
 
@@ -478,9 +465,7 @@ class GraphBuilder:
                 batch_data = [xref.dict_for_neo4j() for xref in batch]
 
                 try:
-                    result = self.connection.execute_query(
-                        query, {"batch": batch_data}
-                    )
+                    result = self.connection.execute_query(query, {"batch": batch_data})
                     if result:
                         count += len(batch)
                     progress.advance(task, len(batch))
@@ -549,25 +534,27 @@ class GraphBuilder:
                     # Find the corresponding xref to get file_number and field_number
                     xref = next((x for x in xrefs.values() if x.xref_id == rel.to_id), None)
                     if xref:
-                        batch_data.append({
-                            "file_number": xref.file_number,
-                            "field_number": xref.field_number,
-                            "to_id": rel.to_id,
-                            "props": rel.to_cypher_props(),
-                        })
+                        batch_data.append(
+                            {
+                                "file_number": xref.file_number,
+                                "field_number": xref.field_number,
+                                "to_id": rel.to_id,
+                                "props": rel.to_cypher_props(),
+                            }
+                        )
 
                 if not batch_data:
                     continue
 
                 try:
-                    result = self.connection.execute_query(
-                        query, {"batch": batch_data}
-                    )
+                    result = self.connection.execute_query(query, {"batch": batch_data})
                     # Extract the actual count from the query result
                     if result and len(result) > 0 and "created" in result[0]:
                         created_count = result[0]["created"]
                         count += created_count
-                        logger.debug(f"Created {created_count} INDEXED_BY relationships in this batch")
+                        logger.debug(
+                            f"Created {created_count} INDEXED_BY relationships in this batch"
+                        )
                     else:
                         logger.warning("No INDEXED_BY relationships created in this batch")
                     progress.advance(task, len(batch))
@@ -715,7 +702,9 @@ class GraphBuilder:
                 if result and len(result) > 0 and "created" in result[0]:
                     created_count = result[0]["created"]
                     count += created_count
-                    logger.debug(f"Created {created_count} VARIABLE_POINTER relationships in this batch")
+                    logger.debug(
+                        f"Created {created_count} VARIABLE_POINTER relationships in this batch"
+                    )
                 else:
                     logger.warning("No VARIABLE_POINTER relationships created in this batch")
             except Exception as e:
@@ -787,9 +776,7 @@ class GraphBuilder:
                 batch_data = [routine.dict_for_neo4j() for routine in batch]
 
                 try:
-                    result = self.connection.execute_query(
-                        query, {"batch": batch_data}
-                    )
+                    result = self.connection.execute_query(query, {"batch": batch_data})
                     if result:
                         count += len(batch)
                     progress.advance(task, len(batch))
@@ -844,9 +831,7 @@ class GraphBuilder:
                 batch_data = [label.dict_for_neo4j() for label in batch]
 
                 try:
-                    result = self.connection.execute_query(
-                        query, {"batch": batch_data}
-                    )
+                    result = self.connection.execute_query(query, {"batch": batch_data})
                     if result:
                         count += len(batch)
                     progress.advance(task, len(batch))
@@ -884,11 +869,13 @@ class GraphBuilder:
         for routine in routines:
             if routine.name in labels_by_routine:
                 for label in labels_by_routine[routine.name]:
-                    relationships.append({
-                        "routine_name": routine.name,
-                        "label_name": label.name,
-                        "line_number": label.line_number
-                    })
+                    relationships.append(
+                        {
+                            "routine_name": routine.name,
+                            "label_name": label.name,
+                            "line_number": label.line_number,
+                        }
+                    )
 
         if not relationships:
             return 0
@@ -914,9 +901,7 @@ class GraphBuilder:
 
             for batch in chunks(relationships, self.batch_size):
                 try:
-                    result = self.connection.execute_query(
-                        query, {"batch": batch}
-                    )
+                    result = self.connection.execute_query(query, {"batch": batch})
                     if result and len(result) > 0:
                         batch_count = result[0].get("count", 0)
                         count += batch_count
@@ -944,10 +929,7 @@ class GraphBuilder:
         routine_data = []
         for r in routines:
             if r.prefix:  # Only create relationships if we have a prefix
-                routine_data.append({
-                    "name": r.name,
-                    "prefix": r.prefix
-                })
+                routine_data.append({"name": r.name, "prefix": r.prefix})
 
         if not routine_data:
             return 0
@@ -975,9 +957,7 @@ class GraphBuilder:
 
             for batch in chunks(routine_data, self.batch_size):
                 try:
-                    result = self.connection.execute_query(
-                        query, {"routines": batch}
-                    )
+                    result = self.connection.execute_query(query, {"routines": batch})
                     if result and len(result) > 0:
                         batch_count = result[0].get("count", 0)
                         count += batch_count
@@ -986,4 +966,327 @@ class GraphBuilder:
                     logger.error(f"Failed to create OWNS_ROUTINE relationships: {e}")
 
         logger.info(f"Created {count} OWNS_ROUTINE relationships")
+        return count
+
+    # Phase 4: Code Relationship Methods
+
+    def create_global_nodes(self, globals_dict: Dict[str, Optional[str]]) -> int:
+        """
+        Create Global nodes in batches.
+
+        Args:
+            globals_dict: Dictionary of {global_name: file_number or None}
+
+        Returns:
+            Number of globals created
+        """
+        if not globals_dict:
+            return 0
+
+        from src.models.nodes import GlobalNode
+
+        globals_list = []
+        for global_name, file_number in globals_dict.items():
+            global_node = GlobalNode(
+                name=global_name,
+                file_number=file_number,
+                type="data" if file_number else "utility",
+                description=f"Global {global_name}"
+                + (f" for file {file_number}" if file_number else ""),
+            )
+            globals_list.append(global_node)
+
+        count = 0
+        query = """
+        UNWIND $batch as global
+        MERGE (g:Global {name: global.name})
+        ON CREATE SET
+            g.global_id = global.global_id,
+            g.type = global.type,
+            g.file_number = global.file_number,
+            g.description = global.description
+        RETURN count(g) as count
+        """
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task(
+                f"[cyan]Creating {len(globals_list)} global nodes...",
+                total=len(globals_list),
+            )
+
+            for batch in chunks(globals_list, self.batch_size):
+                batch_data = [g.dict_for_neo4j() for g in batch]
+
+                try:
+                    result = self.connection.execute_query(query, {"batch": batch_data})
+                    if result:
+                        count += len(batch)
+                    progress.advance(task, len(batch))
+                except Exception as e:
+                    logger.error(f"Failed to create global batch: {e}")
+
+        logger.info(f"Created {count} global nodes")
+        return count
+
+    def create_stored_in_relationships(self, node_cache) -> int:
+        """
+        Create STORED_IN relationships between Files and Globals.
+
+        Args:
+            node_cache: NodeLookupCache with file and global information
+
+        Returns:
+            Number of STORED_IN relationships created
+        """
+        relationships = []
+
+        for _file_num, (file_id, global_root) in node_cache.files.items():
+            if global_root:
+                # Extract global name from root (e.g., "^DPT" -> "DPT")
+                global_name = global_root.replace("^", "").split("(")[0]
+                global_id = node_cache.globals.get(global_name)
+
+                if global_id:
+                    relationships.append({"file_id": file_id, "global_id": global_id})
+
+        if not relationships:
+            return 0
+
+        count = 0
+        query = """
+        UNWIND $batch AS rel
+        MATCH (f:File {file_id: rel.file_id})
+        MATCH (g:Global {global_id: rel.global_id})
+        MERGE (f)-[:STORED_IN {confidence: 1.0}]->(g)
+        RETURN count(*) as created
+        """
+
+        for batch in chunks(relationships, self.batch_size):
+            try:
+                result = self.connection.execute_query(query, {"batch": batch})
+                if result and len(result) > 0:
+                    count += result[0].get("created", 0)
+            except Exception as e:
+                logger.error(f"Failed to create STORED_IN relationships: {e}")
+
+        logger.info(f"Created {count} STORED_IN relationships")
+        return count
+
+    def create_calls_relationships(self, resolved_calls: List[Dict]) -> int:
+        """
+        Create CALLS relationships using pre-resolved node IDs.
+
+        Args:
+            resolved_calls: List of call relationships with resolved IDs
+
+        Returns:
+            Number of CALLS relationships created
+        """
+        if not resolved_calls:
+            return 0
+
+        count = 0
+        query = """
+        UNWIND $batch AS rel
+        MATCH (source:Label {label_id: rel.source_label_id})
+        MATCH (target:Label {label_id: rel.target_label_id})
+        MERGE (source)-[:CALLS {
+            line_number: rel.line_number,
+            call_type: rel.call_type,
+            target_routine: rel.target_routine,
+            confidence: rel.confidence
+        }]->(target)
+        RETURN count(*) as created
+        """
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task(
+                f"[cyan]Creating {len(resolved_calls)} CALLS relationships...",
+                total=len(resolved_calls),
+            )
+
+            for batch in chunks(resolved_calls, self.batch_size):
+                batch_data = []
+                for call in batch:
+                    batch_data.append(
+                        {
+                            "source_label_id": call["source_label_id"],
+                            "target_label_id": call["target_label_id"],
+                            "line_number": call["line_number"],
+                            "call_type": call["call_type"],
+                            "target_routine": call.get("target_routine", ""),
+                            "confidence": 1.0,
+                        }
+                    )
+
+                try:
+                    result = self.connection.execute_query(query, {"batch": batch_data})
+                    if result and len(result) > 0:
+                        count += result[0].get("created", 0)
+                    progress.advance(task, len(batch))
+                except Exception as e:
+                    logger.error(f"Failed to create CALLS relationships: {e}")
+
+        logger.info(f"Created {count} CALLS relationships")
+        return count
+
+    def create_invokes_relationships(self, resolved_invokes: List[Dict]) -> int:
+        """
+        Create INVOKES relationships for function calls.
+
+        Args:
+            resolved_invokes: List of function invocation relationships
+
+        Returns:
+            Number of INVOKES relationships created
+        """
+        if not resolved_invokes:
+            return 0
+
+        count = 0
+        # Build the relationship properties dynamically to handle optional fields
+        query = """
+        UNWIND $batch AS rel
+        MATCH (source:Label {label_id: rel.source_label_id})
+        MATCH (target:Label {label_id: rel.target_label_id})
+        MERGE (source)-[r:INVOKES]->(target)
+        SET r.line_number = rel.line_number,
+            r.target_routine = rel.target_routine,
+            r.confidence = rel.confidence
+        // Only set assigns_to if it's not null
+        FOREACH (_ IN CASE WHEN rel.assigns_to IS NOT NULL THEN [1] ELSE [] END |
+            SET r.assigns_to = rel.assigns_to
+        )
+        RETURN count(*) as created
+        """
+
+        for batch in chunks(resolved_invokes, self.batch_size):
+            batch_data = []
+            for invoke in batch:
+                rel_data = {
+                    "source_label_id": invoke["source_label_id"],
+                    "target_label_id": invoke["target_label_id"],
+                    "line_number": invoke["line_number"],
+                    "target_routine": invoke.get("target_routine", ""),
+                    "confidence": 1.0,
+                }
+                # Only add assigns_to if it's not None
+                assigns_to = invoke.get("assigns_to")
+                if assigns_to is not None:
+                    rel_data["assigns_to"] = assigns_to
+                else:
+                    rel_data["assigns_to"] = None
+                    
+                batch_data.append(rel_data)
+
+            try:
+                result = self.connection.execute_query(query, {"batch": batch_data})
+                if result and len(result) > 0:
+                    count += result[0].get("created", 0)
+            except Exception as e:
+                logger.error(f"Failed to create INVOKES relationships: {e}")
+
+        logger.info(f"Created {count} INVOKES relationships")
+        return count
+
+    def create_accesses_relationships(self, resolved_accesses: List[Dict]) -> int:
+        """
+        Create ACCESSES relationships between Labels and Globals.
+
+        Args:
+            resolved_accesses: List of global access relationships
+
+        Returns:
+            Number of ACCESSES relationships created
+        """
+        if not resolved_accesses:
+            return 0
+
+        count = 0
+        query = """
+        UNWIND $batch AS rel
+        MATCH (l:Label {label_id: rel.label_id})
+        MATCH (g:Global {global_id: rel.global_id})
+        MERGE (l)-[:ACCESSES {
+            line_number: rel.line_number,
+            access_type: rel.access_type,
+            pattern: rel.pattern,
+            confidence: rel.confidence
+        }]->(g)
+        RETURN count(*) as created
+        """
+
+        for batch in chunks(resolved_accesses, self.batch_size):
+            batch_data = []
+            for access in batch:
+                batch_data.append(
+                    {
+                        "label_id": access["label_id"],
+                        "global_id": access["global_id"],
+                        "line_number": access["line_number"],
+                        "access_type": access["access_type"],
+                        "pattern": access.get("pattern", ""),
+                        "confidence": 0.8,
+                    }
+                )
+
+            try:
+                result = self.connection.execute_query(query, {"batch": batch_data})
+                if result and len(result) > 0:
+                    count += result[0].get("created", 0)
+            except Exception as e:
+                logger.error(f"Failed to create ACCESSES relationships: {e}")
+
+        logger.info(f"Created {count} ACCESSES relationships")
+        return count
+
+    def create_falls_through_relationships(self, falls_through: List[Dict]) -> int:
+        """
+        Create FALLS_THROUGH relationships between consecutive labels.
+
+        Args:
+            falls_through: List of falls through relationships
+
+        Returns:
+            Number of FALLS_THROUGH relationships created
+        """
+        if not falls_through:
+            return 0
+
+        count = 0
+        query = """
+        UNWIND $batch AS rel
+        MATCH (from:Label {label_id: rel.from_label_id})
+        MATCH (to:Label {label_id: rel.to_label_id})
+        MERGE (from)-[:FALLS_THROUGH {confidence: rel.confidence}]->(to)
+        RETURN count(*) as created
+        """
+
+        for batch in chunks(falls_through, self.batch_size):
+            batch_data = []
+            for ft in batch:
+                batch_data.append(
+                    {
+                        "from_label_id": ft["from_label_id"],
+                        "to_label_id": ft["to_label_id"],
+                        "confidence": ft.get("confidence", 0.9),
+                    }
+                )
+
+            try:
+                result = self.connection.execute_query(query, {"batch": batch_data})
+                if result and len(result) > 0:
+                    count += result[0].get("created", 0)
+            except Exception as e:
+                logger.error(f"Failed to create FALLS_THROUGH relationships: {e}")
+
+        logger.info(f"Created {count} FALLS_THROUGH relationships")
         return count

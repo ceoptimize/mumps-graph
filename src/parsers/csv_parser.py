@@ -85,10 +85,7 @@ class PackageCSVParser:
         """
         # Continuation rows have empty Package Name and Directory Name
         # but may have prefixes or file numbers
-        return (
-            not row.get("Package Name", "").strip()
-            and not row.get("Directory Name", "").strip()
-        )
+        return not row.get("Package Name", "").strip() and not row.get("Directory Name", "").strip()
 
     def _process_package_row(self, row: Dict[str, str]) -> Optional[PackageNode]:
         """
@@ -213,9 +210,7 @@ class PackageCSVParser:
     def get_statistics(self) -> Dict[str, Any]:
         """Get parsing statistics."""
         total_prefixes = sum(len(p.prefixes) for p in self.packages)
-        packages_with_ranges = sum(
-            1 for p in self.packages if p.files_low and p.files_high
-        )
+        packages_with_ranges = sum(1 for p in self.packages if p.files_low and p.files_high)
 
         return {
             "total_packages": len(self.packages),

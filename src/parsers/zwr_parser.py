@@ -145,9 +145,11 @@ class ZWRParser:
                 continue
 
             # Look for file name entries: ^DD(file_num,0,"NM","NAME")=""
-            if (len(parsed.subscripts) >= 4 and
-                parsed.subscripts[1] == "0" and
-                parsed.subscripts[2] == "NM"):
+            if (
+                len(parsed.subscripts) >= 4
+                and parsed.subscripts[1] == "0"
+                and parsed.subscripts[2] == "NM"
+            ):
                 file_number = parsed.subscripts[0]
                 file_name = parsed.subscripts[3]
                 self.file_names[file_number] = file_name
@@ -305,7 +307,7 @@ class ZWRParser:
     def parse_dic_file(self, file_path: Path, files: Dict[str, FileNode]):
         """
         Parse DIC file to extract global roots.
-        
+
         Args:
             file_path: Path to FILE.zwr (DIC entries)
             files: Dictionary of FileNode objects to update
@@ -317,11 +319,12 @@ class ZWRParser:
                     continue
 
                 # Look for DIC global root entries: ^DIC(file_num,0,"GL")="^GLOBAL("
-                if (parsed.global_name == "DIC" and
-                    len(parsed.subscripts) == 3 and
-                    parsed.subscripts[1] == "0" and
-                    parsed.subscripts[2] == "GL"):
-
+                if (
+                    parsed.global_name == "DIC"
+                    and len(parsed.subscripts) == 3
+                    and parsed.subscripts[1] == "0"
+                    and parsed.subscripts[2] == "GL"
+                ):
                     file_number = parsed.subscripts[0]
                     if file_number in files:
                         # Clean up the global root value
@@ -330,9 +333,7 @@ class ZWRParser:
                             global_root = "^" + global_root
                         files[file_number].global_root = global_root
 
-    def stream_parse_file(
-        self, file_path: Path
-    ) -> Generator[ParsedGlobal, None, None]:
+    def stream_parse_file(self, file_path: Path) -> Generator[ParsedGlobal, None, None]:
         """
         Stream parse a ZWR file line by line.
 
@@ -363,9 +364,7 @@ class ZWRParser:
 
     # Phase 2: Enhanced parsing methods for relationships
 
-    def extract_cross_references(
-        self, lines: List[str]
-    ) -> Dict[str, CrossReferenceNode]:
+    def extract_cross_references(self, lines: List[str]) -> Dict[str, CrossReferenceNode]:
         """
         Extract cross-reference definitions from DD.
 
@@ -422,20 +421,14 @@ class ZWRParser:
                             }
 
                 # Check for SET logic: DD(file,field,1,xref_num,1)
-                elif (
-                    len(parsed.subscripts) == 5
-                    and parsed.subscripts[4] == "1"
-                ):
+                elif len(parsed.subscripts) == 5 and parsed.subscripts[4] == "1":
                     xref_num = parsed.subscripts[3]
                     xref_id = f"{file_number}_{field_number}_{xref_num}"
                     if xref_id in xref_definitions:
                         xref_definitions[xref_id]["set_logic"] = parsed.value
 
                 # Check for KILL logic: DD(file,field,1,xref_num,2)
-                elif (
-                    len(parsed.subscripts) == 5
-                    and parsed.subscripts[4] == "2"
-                ):
+                elif len(parsed.subscripts) == 5 and parsed.subscripts[4] == "2":
                     xref_num = parsed.subscripts[3]
                     xref_id = f"{file_number}_{field_number}_{xref_num}"
                     if xref_id in xref_definitions:
@@ -458,9 +451,7 @@ class ZWRParser:
 
         return xrefs
 
-    def extract_subfiles(
-        self, files: Dict[str, FileNode]
-    ) -> Dict[str, SubfileNode]:
+    def extract_subfiles(self, files: Dict[str, FileNode]) -> Dict[str, SubfileNode]:
         """
         Identify and create subfile nodes from file definitions.
 
@@ -506,9 +497,7 @@ class ZWRParser:
 
         return subfiles
 
-    def extract_variable_pointers(
-        self, lines: List[str]
-    ) -> Dict[str, List[Dict[str, str]]]:
+    def extract_variable_pointers(self, lines: List[str]) -> Dict[str, List[Dict[str, str]]]:
         """
         Extract V-type (variable pointer) targets from DD.
 

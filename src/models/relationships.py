@@ -17,6 +17,15 @@ class RelationshipType(Enum):
     BELONGS_TO_PACKAGE = "BELONGS_TO_PACKAGE"
     INDEXED_BY = "INDEXED_BY"
     VARIABLE_POINTER = "VARIABLE_POINTER"
+    # Phase 3 relationships
+    CONTAINS_LABEL = "CONTAINS_LABEL"
+    OWNS_ROUTINE = "OWNS_ROUTINE"
+    # Phase 4 relationships
+    CALLS = "CALLS"
+    INVOKES = "INVOKES"
+    ACCESSES = "ACCESSES"
+    FALLS_THROUGH = "FALLS_THROUGH"
+    STORED_IN = "STORED_IN"
 
 
 class Relationship(BaseModel):
@@ -67,9 +76,7 @@ class PointsToRel(Relationship):
 
     relationship_type: RelationshipType = RelationshipType.POINTS_TO
 
-    def __init__(
-        self, field_id: str, target_file_id: str, confidence: float = 1.0
-    ):
+    def __init__(self, field_id: str, target_file_id: str, confidence: float = 1.0):
         super().__init__(
             from_id=field_id,
             to_id=target_file_id,
@@ -177,4 +184,128 @@ class VariablePointerRel(Relationship):
             to_id=target_file_id,
             confidence=1.0,
             metadata=metadata,
+        )
+
+
+class CallsRel(Relationship):
+    """Label calls another label via DO or GOTO."""
+
+    relationship_type: RelationshipType = RelationshipType.CALLS
+
+    def __init__(
+        self,
+        from_label_id: str,
+        to_label_id: str,
+        line_number: int,
+        call_type: str,  # "DO", "GOTO", "JOB"
+        target_routine: str = None,
+        confidence: float = 1.0,
+    ):
+        metadata = {
+            "line_number": line_number,
+            "call_type": call_type,
+        }
+        if target_routine:
+            metadata["target_routine"] = target_routine
+
+        super().__init__(
+            from_id=from_label_id,
+            to_id=to_label_id,
+            confidence=confidence,
+            metadata=metadata,
+        )
+
+
+class InvokesRel(Relationship):
+    """Label invokes function via $$."""
+
+    relationship_type: RelationshipType = RelationshipType.INVOKES
+
+    def __init__(
+        self,
+        from_label_id: str,
+        to_label_id: str,
+        line_number: int,
+        assigns_to: str = None,
+        target_routine: str = None,
+        confidence: float = 1.0,
+    ):
+        metadata = {
+            "line_number": line_number,
+        }
+        if assigns_to:
+            metadata["assigns_to"] = assigns_to
+        if target_routine:
+            metadata["target_routine"] = target_routine
+
+        super().__init__(
+            from_id=from_label_id,
+            to_id=to_label_id,
+            confidence=confidence,
+            metadata=metadata,
+        )
+
+
+class AccessesRel(Relationship):
+    """Label accesses a global."""
+
+    relationship_type: RelationshipType = RelationshipType.ACCESSES
+
+    def __init__(
+        self,
+        label_id: str,
+        global_id: str,
+        line_number: int,
+        access_type: str,  # "READ", "WRITE", "KILL", "EXISTS"
+        pattern: str = None,
+        confidence: float = 0.8,
+    ):
+        metadata = {
+            "line_number": line_number,
+            "access_type": access_type,
+        }
+        if pattern:
+            metadata["pattern"] = pattern
+
+        super().__init__(
+            from_id=label_id,
+            to_id=global_id,
+            confidence=confidence,
+            metadata=metadata,
+        )
+
+
+class FallsThroughRel(Relationship):
+    """Sequential execution between labels."""
+
+    relationship_type: RelationshipType = RelationshipType.FALLS_THROUGH
+
+    def __init__(
+        self,
+        from_label_id: str,
+        to_label_id: str,
+        confidence: float = 0.9,
+    ):
+        super().__init__(
+            from_id=from_label_id,
+            to_id=to_label_id,
+            confidence=confidence,
+        )
+
+
+class StoredInRel(Relationship):
+    """File is stored in a global."""
+
+    relationship_type: RelationshipType = RelationshipType.STORED_IN
+
+    def __init__(
+        self,
+        file_id: str,
+        global_id: str,
+        confidence: float = 1.0,
+    ):
+        super().__init__(
+            from_id=file_id,
+            to_id=global_id,
+            confidence=confidence,
         )

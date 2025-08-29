@@ -39,12 +39,8 @@ class Neo4jConnection:
             self.driver = GraphDatabase.driver(
                 self.config["uri"],
                 auth=self.config["auth"],
-                max_connection_lifetime=self.config.get(
-                    "max_connection_lifetime", 3600
-                ),
-                max_connection_pool_size=self.config.get(
-                    "max_connection_pool_size", 50
-                ),
+                max_connection_lifetime=self.config.get("max_connection_lifetime", 3600),
+                max_connection_pool_size=self.config.get("max_connection_pool_size", 50),
                 connection_timeout=self.config.get("connection_timeout", 30.0),
             )
 
@@ -84,9 +80,7 @@ class Neo4jConnection:
         if not self.driver:
             raise RuntimeError("Not connected to Neo4j. Call connect() first.")
 
-        session = self.driver.session(
-            database=database or self.config.get("database", "neo4j")
-        )
+        session = self.driver.session(database=database or self.config.get("database", "neo4j"))
         try:
             yield session
         finally:

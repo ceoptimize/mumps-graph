@@ -17,24 +17,24 @@ class RoutineParser:
     # Pattern to match labels (start at column 1, alphanumeric)
     # Examples: START, A1, EN(DFN,TYPE), FUNC()
     LABEL_PATTERN = re.compile(
-        r'^([A-Z][A-Z0-9]*)'  # Label name
-        r'(?:\(([^)]*)\))?'  # Optional parameters
-        r'(?:\s+[^;].*)?'  # Optional code on same line
-        r'(?:\s*;(.*))?'  # Optional comment
+        r"^([A-Z][A-Z0-9]*)"  # Label name
+        r"(?:\(([^)]*)\))?"  # Optional parameters
+        r"(?:\s+[^;].*)?"  # Optional code on same line
+        r"(?:\s*;(.*))?"  # Optional comment
     )
 
     # Pattern to extract routine metadata from header
     HEADER_PATTERN = re.compile(
-        r';;([\d.]+);.*?\*\*([^*]+)\*\*'  # Version and patches
+        r";;([\d.]+);.*?\*\*([^*]+)\*\*"  # Version and patches
     )
 
     # Entry point indicators (heuristics)
-    ENTRY_POINT_INDICATORS = ['EN', 'EP', 'START', 'INIT', 'BEGIN']
+    ENTRY_POINT_INDICATORS = ["EN", "EP", "START", "INIT", "BEGIN"]
 
     # Pattern to detect functions (QUIT with value)
     FUNCTION_PATTERN = re.compile(
-        r'\sQ(?:UIT)?\s+\$\$',  # QUIT $$VALUE
-        re.IGNORECASE
+        r"\sQ(?:UIT)?\s+\$\$",  # QUIT $$VALUE
+        re.IGNORECASE,
     )
 
     def parse_directory(
@@ -86,12 +86,12 @@ class RoutineParser:
         # Try to extract prefix (first 2-4 alpha chars)
         prefix = None
         if routine_name:
-            match = re.match(r'^([A-Z]+)', routine_name)
+            match = re.match(r"^([A-Z]+)", routine_name)
             if match:
                 prefix = match.group(1)[:4]  # Max 4 chars for prefix
 
         try:
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                 lines = f.readlines()
         except Exception as e:
             console.print(f"[yellow]Could not read {file_path}: {e}[/yellow]")
@@ -103,29 +103,29 @@ class RoutineParser:
             package_name=package_name,
             prefix=prefix,
             path=str(file_path),
-            lines_of_code=len(lines)
+            lines_of_code=len(lines),
         )
 
         # Extract metadata from header if present
         if lines:
             header_info = self._extract_header_info(lines[:5])
             if header_info:
-                routine.version = header_info.get('version')
-                routine.patches = header_info.get('patches', [])
-                routine.description = header_info.get('description')
+                routine.version = header_info.get("version")
+                routine.patches = header_info.get("patches", [])
+                routine.description = header_info.get("description")
 
         # Parse labels
         for line_num, line in enumerate(lines, 1):
             label_data = self._extract_label(line, line_num)
             if label_data:
                 label = LabelNode(
-                    name=label_data['name'],
+                    name=label_data["name"],
                     routine_name=routine_name,
                     line_number=line_num,
-                    parameters=label_data.get('parameters', []),
-                    comment=label_data.get('comment'),
-                    is_entry_point=self._is_entry_point(label_data['name']),
-                    is_function=False  # Will be determined by analyzing code after label
+                    parameters=label_data.get("parameters", []),
+                    comment=label_data.get("comment"),
+                    is_entry_point=self._is_entry_point(label_data["name"]),
+                    is_function=False,  # Will be determined by analyzing code after label
                 )
 
                 # Check if this is a function by looking ahead
@@ -154,15 +154,15 @@ class RoutineParser:
                 version_str = match.group(1)
                 patch_str = match.group(2)
 
-                info['version'] = version_str
-                patches = [p.strip() for p in patch_str.split(',')]
-                info['patches'] = patches
+                info["version"] = version_str
+                patches = [p.strip() for p in patch_str.split(",")]
+                info["patches"] = patches
 
             # Extract description from first comment line
-            if line.startswith(';') and 'description' not in info:
+            if line.startswith(";") and "description" not in info:
                 desc = line[1:].strip()
-                if desc and not desc.startswith(';') and not desc.startswith('**'):
-                    info['description'] = desc
+                if desc and not desc.startswith(";") and not desc.startswith("**"):
+                    info["description"] = desc
 
         return info if info else None
 
@@ -177,7 +177,7 @@ class RoutineParser:
             Dict with label info or None
         """
         # Labels must start at column 1 (no leading spaces)
-        if not line or line[0] == ' ' or line[0] == '\t' or line[0] == ';':
+        if not line or line[0] == " " or line[0] == "\t" or line[0] == ";":
             return None
 
         # Try to match label pattern
@@ -190,12 +190,12 @@ class RoutineParser:
             # Parse parameters if present
             parameters = []
             if params_str:
-                parameters = [p.strip() for p in params_str.split(',')]
+                parameters = [p.strip() for p in params_str.split(",")]
 
             return {
-                'name': label_name,
-                'parameters': parameters,
-                'comment': comment.strip() if comment else None
+                "name": label_name,
+                "parameters": parameters,
+                "comment": comment.strip() if comment else None,
             }
 
         return None
@@ -237,7 +237,7 @@ class RoutineParser:
             line = lines[i]
 
             # Stop at next label
-            if i > label_line_num and line and line[0] not in ' \t;':
+            if i > label_line_num and line and line[0] not in " \t;":
                 break
 
             # Check for QUIT with value pattern
@@ -245,16 +245,14 @@ class RoutineParser:
                 return True
 
             # Also check for explicit QUIT value patterns
-            if re.search(r'\sQ(?:UIT)?\s+\w+', line, re.IGNORECASE):
+            if re.search(r"\sQ(?:UIT)?\s+\w+", line, re.IGNORECASE):
                 # But not just QUIT (with no value)
-                if not re.search(r'\sQ(?:UIT)?\s*$', line, re.IGNORECASE):
+                if not re.search(r"\sQ(?:UIT)?\s*$", line, re.IGNORECASE):
                     return True
 
         return False
 
-    def extract_labels_from_content(
-        self, content: str, routine_name: str
-    ) -> List[LabelNode]:
+    def extract_labels_from_content(self, content: str, routine_name: str) -> List[LabelNode]:
         """Extract labels from routine content string.
 
         Args:
@@ -265,19 +263,19 @@ class RoutineParser:
             List of LabelNode objects
         """
         labels = []
-        lines = content.split('\n')
+        lines = content.split("\n")
 
         for line_num, line in enumerate(lines, 1):
             label_data = self._extract_label(line, line_num)
             if label_data:
                 label = LabelNode(
-                    name=label_data['name'],
+                    name=label_data["name"],
                     routine_name=routine_name,
                     line_number=line_num,
-                    parameters=label_data.get('parameters', []),
-                    comment=label_data.get('comment'),
-                    is_entry_point=self._is_entry_point(label_data['name']),
-                    is_function=self._is_function(lines, line_num - 1)  # 0-indexed for list
+                    parameters=label_data.get("parameters", []),
+                    comment=label_data.get("comment"),
+                    is_entry_point=self._is_entry_point(label_data["name"]),
+                    is_function=self._is_function(lines, line_num - 1),  # 0-indexed for list
                 )
                 labels.append(label)
 

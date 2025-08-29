@@ -53,7 +53,12 @@ class GraphQueries:
             "POINTS_TO": ("Field", "field_id", "File", "file_id"),
             "COMPUTED_FROM": ("Field", "field_id", "Field", "field_id"),
             "SUBFILE_OF": ("File", "number", "File", "number"),  # Match on file number
-            "INDEXED_BY": ("Field", "file_number,number", "CrossReference", "xref_id"),  # Match on composite
+            "INDEXED_BY": (
+                "Field",
+                "file_number,number",
+                "CrossReference",
+                "xref_id",
+            ),  # Match on composite
             "VARIABLE_POINTER": ("Field", "field_id", "File", "file_id"),
         }
 

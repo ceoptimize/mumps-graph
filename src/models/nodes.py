@@ -110,19 +110,11 @@ class ParsedGlobal(BaseModel):
 
     def is_file_header(self) -> bool:
         """Check if this is a file header entry (^DD(file_num,0))."""
-        return (
-            self.is_dd_entry()
-            and len(self.subscripts) == 2
-            and self.subscripts[1] == "0"
-        )
+        return self.is_dd_entry() and len(self.subscripts) == 2 and self.subscripts[1] == "0"
 
     def is_field_definition(self) -> bool:
         """Check if this is a field definition entry."""
-        return (
-            self.is_dd_entry()
-            and len(self.subscripts) >= 3
-            and self.subscripts[2] == "0"
-        )
+        return self.is_dd_entry() and len(self.subscripts) >= 3 and self.subscripts[2] == "0"
 
 
 DATA_TYPE_MAP = {
@@ -243,4 +235,24 @@ class LabelNode(BaseModel):
             "is_function": self.is_function,
             "parameters": self.parameters,
             "comment": self.comment,
+        }
+
+
+class GlobalNode(BaseModel):
+    """Global storage location in VistA."""
+
+    global_id: str = Field(default_factory=lambda: str(uuid4()))
+    name: str  # e.g., "DPT" (without ^)
+    type: str = "data"  # "data", "index", "temp"
+    file_number: Optional[str] = None  # Associated file if known
+    description: Optional[str] = None
+
+    def dict_for_neo4j(self) -> Dict[str, Any]:
+        """Convert to dict for Neo4j node creation."""
+        return {
+            "global_id": self.global_id,
+            "name": self.name,
+            "type": self.type,
+            "file_number": self.file_number,
+            "description": self.description,
         }
